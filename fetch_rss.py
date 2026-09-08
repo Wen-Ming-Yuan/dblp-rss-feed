@@ -1,8 +1,10 @@
 import asyncio
 import json
 import re
-import os
+import time
+import xml.sax.saxutils as saxutils
 from urllib.parse import quote
+from email.utils import formatdate
 from playwright.async_api import async_playwright
 
 # 第七版CCF推荐目录中的A类会议（使用官方 streamid 格式）
@@ -21,31 +23,43 @@ CONFERENCES = [
     "streamid:conf/www:", "streamid:conf/rtss:",
 ]
 
+# 处理多样化的作者结构（字符串、单元素对象、列表）
+def parse_authors(authors_info):
+    authors_list = []
+    if isinstance(authors_info, list):
+        for author in authors_info:
+            if isinstance(author, dict):
+                authors_list.append(author.get("text", ""))
+            elif isinstance(author, str):
+                authors_list.append(author)
+    elif isinstance(authors_info, dict):
+        authors_list.append(authors_info.get("text", ""))
+    return ", ".join(filter(None, authors_list))
+
 async def fetch_data(page, url):
-    """获取JSON数据，处理Anubis验证页面"""
-    try:
-        # 使用 wait_for_load_state 而不是 networkidle，更稳健
-        await page.goto(url, wait_until="networkidle", timeout=60000)
-        # 额外等待一下，确保JS挑战完成
-        await page.wait_for_timeout(5000)
-        
-        # 获取页面全部文本
-        content = await page.inner_text("body")
-        
-        # 如果返回的是HTML（验证页面），则直接报错跳过
-        if "<html" in content.lower() or "anubis" in content.lower():
-            print(f"触发Anubis验证，等待更长时间或跳过: {url}")
-            return None
-        
-        # 尝试解析JSON
-        return json.loads(content)
-    except Exception as e:
-        print(f"抓取失败 {url}: {e}")
-        return None
+    """获取JSON数据，使用重试退避机制"""
+    for attempt in range(3):
+        try:
+            # 直接获取响应体 (response.text)，避免 inner_text 解析 JSON 带来的隐患
+            response = await page.goto(url, wait_until="networkidle", timeout=60000)
+            if response.status == 200:
+                body = await response.text()
+                # 如果返回的是HTML（验证页面），则等待后重试
+                if "<html" in body.lower() or "anubis" in body.lower():
+                    print(f"触发Anubis验证，重试中: {url}")
+                    await page.wait_for_timeout(5000)
+                    continue
+                return json.loads(body)
+            else:
+                print(f"HTTP {response.status} for {url}")
+        except Exception as e:
+            print(f"抓取失败 {url}, 尝试 {attempt + 1}: {e}")
+            await page.wait_for_timeout(3000)
+    return None
 
 async def main():
     async with async_playwright() as p:
-       # 添加规避自动检测的参数
+        # 添加规避自动检测的参数
         browser = await p.chromium.launch(
             headless=True,
             args=['--disable-blink-features=AutomationControlled', '--disable-dev-shm-usage']
@@ -70,21 +84,32 @@ async def main():
                 for hit in hits:
                     info = hit.get("info", {})
                     title = info.get("title", "无标题")
-                    # 清理标题中的HTML标签
+                    # 清理标题中的HTML标签，并转义XML特殊字符（如&, <, >）
                     title = re.sub(r'<[^>]+>', '', title)
+                    title = saxutils.escape(title)
+                    
                     link = info.get("ee") or info.get("url", "")
-                    authors = ", ".join([a.get("text", "") for a in info.get("authors", {}).get("author", [])])
+                    authors = parse_authors(info.get("authors", {}).get("author", []))
                     year = info.get("year", "")
+                    
+                    # 使用 RFC-2822 格式生成日期
+                    try:
+                        pub_date = formatdate(time.mktime(time.strptime(f"{year}-01-01", "%Y-%m-%d")), usegmt=True)
+                    except:
+                        pub_date = formatdate(time.time(), usegmt=True)
                     
                     rss_items.append(f"""
                     <item>
                         <title>{title}</title>
-                        <link>{link}</link>
-                        <description>作者: {authors} | 年份: {year}</description>
-                        <pubDate>{year}-01-01</pubDate>
+                        <link>{saxutils.escape(link)}</link>
+                        <description>作者: {saxutils.escape(authors)} | 年份: {year}</description>
+                        <pubDate>{pub_date}</pubDate>
                     </item>""")
             else:
                 print(f"跳过 {conf}")
+            
+            # 限速，防止被封IP
+            await page.wait_for_timeout(1000)
 
         await browser.close()
 
