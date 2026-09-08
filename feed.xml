@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+<title>DBLP Conference Feed</title>
+<link>https://github.com/yourname/dblp-rss-feed</link>
+<description>自动生成的 DBLP 会议 RSS 源</description>
+
+</channel>
+</rss>
