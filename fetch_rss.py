@@ -5,7 +5,7 @@ import time
 import xml.sax.saxutils as saxutils
 from urllib.parse import quote
 from email.utils import formatdate
-from playwright.async_api import async_playwright
+from playwright.async_api import async_playwright # pyright: ignore[reportMissingImports]
 
 # 第七版CCF推荐目录中的A类会议（使用官方 streamid 格式）
 CONFERENCES = [
@@ -88,7 +88,7 @@ async def fetch_details_from_openalex(doi_url):
     if not doi_url or "doi.org" not in doi_url:
         return "", "", ""
     try:
-        import requests
+        import requests # pyright: ignore[reportMissingModuleSource]
         doi = doi_url.split("doi.org/")[-1]
         url = f"https://api.openalex.org/works/https://doi.org/{doi}"
         response = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
@@ -151,10 +151,10 @@ async def main():
         page = await context.new_page()
 
         rss_items = []
-        for conf in CONFERENCES:
+        for conf, short_name, ccf_level in CONFERENCES:
             # 构造URL并进行URL编码
             encoded_conf = quote(conf, safe='')
-            url = f"https://dblp.org/search/publ/api?q={encoded_conf}&h=1000&format=json"
+            url = f"https://dblp.org/search/publ/api?q={encoded_conf}&h=10000&format=json"
             
             print(f"正在抓取: {conf}")
             data = await fetch_data(page, url)
@@ -188,7 +188,11 @@ async def main():
                         <title>{title}</title>
                         <link>{saxutils.escape(link)}</link>
                         <description>
+<<<<<<< HEAD
                             <b>会议:</b> {saxutils.escape(venue_name or short_name)} ({ccf_level})<br>
+=======
+                            <b>会议/期刊:</b> {saxutils.escape(venue_name or short_name)} ({ccf_level})<br>
+>>>>>>> b2601b613e57ea95845828bf46e4204b20e20278
                             <b>作者:</b> {saxutils.escape(authors)} | <b>年份:</b> {year}<br><br>
                             <b>摘要:</b> {abstract}<br><br>
                             <b>具体内容链接:</b> {saxutils.escape(full_text_url or link)}
