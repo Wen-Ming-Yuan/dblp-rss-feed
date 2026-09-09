@@ -188,7 +188,7 @@ async def main():
 
                
                 before = len(hits)
-                hits = [h for h in hits if if not h.get("info", {}).get("key", "").startswith(BLACKLIST_PREFIXES)]
+                hits = [h for h in hits if not h.get("info", {}).get("key", "").startswith(BLACKLIST_PREFIXES)]
                 if before != len(hits):
                     print(f"  过滤掉 {before - len(hits)} 条（非 {short_name} 或早于 {min_year} 年）", flush=True)
 
