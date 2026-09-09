@@ -85,37 +85,49 @@ def reconstruct_abstract(inverted_index):
 
 # 从OpenAlex获取期刊/会议全称、摘要和全文链接
 async def fetch_details_from_openalex(doi_url):
-    if not doi_url or "doi.org" not in doi_url:
-        return "", "", ""
     try:
-        import requests # pyright: ignore[reportMissingModuleSource]
-        doi = doi_url.split("doi.org/")[-1]
-        url = f"https://api.openalex.org/works/https://doi.org/{doi}"
-        response = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+        import requests
+        headers = {"User-Agent": "Mozilla/5.0"}
+        url = None
+        
+        if doi_url and "doi.org" in doi_url:
+            doi = doi_url.split("doi.org/")[-1]
+            url = f"https://api.openalex.org/works/https://doi.org/{doi}"
+        elif title:
+            url = f"https://api.openalex.org/works?search={quote(title)}&per-page=1"
+        
+        if not url:
+            return "", "", "", []
+
+        response = requests.get(url, timeout=10, headers=headers)
         if response.status_code == 200:
             data = response.json()
+            if isinstance(data, dict) and "results" in data:
+                if not data["results"]:
+                    return "", "", "", []
+                data = data["results"][0]
+
             abstract = reconstruct_abstract(data.get("abstract_inverted_index"))
             
-            # 获取期刊或会议全名
             venue_name = ""
             primary_loc = data.get("primary_location") or {}
             source = primary_loc.get("source") or {}
             venue_name = source.get("display_name", "")
+            
+            full_text_url = data.get("best_oa_location", {}).get("pdf_url") or data.get("doi") or doi_url
+
             keywords_list = []
             for kw in data.get("keywords", []) or []:
                 keywords_list.append(kw.get("display_name", ""))
             if not keywords_list:
                 for concept in (data.get("concepts", []) or [])[:5]:
                     keywords_list.append(concept.get("display_name", ""))
-            
-            # 获取具体内容链接（优先取全文，其次取DOI）
-            full_text_url = data.get("best_oa_location", {}).get("pdf_url") or data.get("doi")
 
-
-            return venue_name, abstract, full_text_url,keywords_list
+            return venue_name, abstract, full_text_url, keywords_list
     except Exception as e:
-        pass
-    return "", "", ""
+        print(f"OpenAlex请求异常: {e}")
+    
+    return "", "", "", []
 async def fetch_data(page, url):
     """获取JSON数据，使用重试退避机制"""
     for attempt in range(3):
@@ -154,7 +166,7 @@ async def main():
         for conf, short_name, ccf_level in CONFERENCES:
             # 构造URL并进行URL编码
             encoded_conf = quote(conf, safe='')
-            url = f"https://dblp.org/search/publ/api?q={encoded_conf}&h=10000&format=json"
+            url = f"https://dblp.org/search/publ/api?q={encoded_conf}&h=1000&format=json"
             
             print(f"正在抓取: {conf}")
             data = await fetch_data(page, url)
@@ -188,11 +200,7 @@ async def main():
                         <title>{title}</title>
                         <link>{saxutils.escape(link)}</link>
                         <description>
-<<<<<<< HEAD
-                            <b>会议:</b> {saxutils.escape(venue_name or short_name)} ({ccf_level})<br>
-=======
                             <b>会议/期刊:</b> {saxutils.escape(venue_name or short_name)} ({ccf_level})<br>
->>>>>>> b2601b613e57ea95845828bf46e4204b20e20278
                             <b>作者:</b> {saxutils.escape(authors)} | <b>年份:</b> {year}<br><br>
                             <b>摘要:</b> {abstract}<br><br>
                             <b>具体内容链接:</b> {saxutils.escape(full_text_url or link)}
