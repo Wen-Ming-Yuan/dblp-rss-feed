@@ -225,7 +225,7 @@ def build_rss():
                 f"<pubDate>{pub_date}</pubDate>"
                 "</item>"
             )
-            time.sleep(0.1)
+            
 
         # be polite
         time.sleep(1)
