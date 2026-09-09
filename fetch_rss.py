@@ -86,16 +86,17 @@ def get_json_with_retries(url, params=None, headers=None, retries=3, timeout=10)
 
 def fetch_details_from_openalex(doi_url, title=None):
     try:
-        headers = {"User-Agent": "Mozilla/5.0"}
+        headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
         url = None
 
         if doi_url and "doi.org" in doi_url:
             doi = doi_url.split("doi.org/")[-1]
-            # encode DOI for URL
-            doi = quote(doi, safe='')
             url = f"https://api.openalex.org/works/doi:{doi}"
-        elif title and not doi_url:
-            url = f"https://api.openalex.org/works?search={quote(title)}&per-page=1"
+        elif title :
+            query = f'"{title}"'
+            if year:
+                query += f"&filter=publication_year:{year}"
+            url = f"https://api.openalex.org/works?search={quote(query)}&per-page=1"
 
         if not url:
             return "", "", "", []
@@ -105,6 +106,9 @@ def fetch_details_from_openalex(doi_url, title=None):
             return "", "", "", []
 
         # If search endpoint returned results list
+        if data is None:
+            print(f"OpenAlex 请求失败（返回 None）: {url}")
+            return "", "", "", []
         if isinstance(data, dict) and "results" in data:
             if not data["results"]:
                 return "", "", "", []
@@ -221,6 +225,7 @@ def build_rss():
                 f"<pubDate>{pub_date}</pubDate>"
                 "</item>"
             )
+            time.sleep(0.1)
 
         # be polite
         time.sleep(1)
