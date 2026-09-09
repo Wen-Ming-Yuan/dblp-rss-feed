@@ -143,7 +143,7 @@ async def main():
         page = await context.new_page()
 
         rss_items = []
-        for conf in CONFERENCES:
+        for conf, short_name, ccf_level in CONFERENCES:
             # 构造URL并进行URL编码
             encoded_conf = quote(conf, safe='')
             url = f"https://dblp.org/search/publ/api?q={encoded_conf}&h=10000&format=json"
