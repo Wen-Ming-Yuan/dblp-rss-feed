@@ -9,39 +9,29 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # 确保有写权限来部署
+      contents: write
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install Python deps
+      - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          # 安装代码依赖（来自 requirements.txt）
-          if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
+          pip install -r requirements.txt
+          playwright install --with-deps chromium
 
-      - name: Install Playwright and browsers
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install playwright
-          python -m playwright install --with-deps chromium
-
-      - name: Run script (write output to ./public)
+      - name: Generate RSS
         run: |
           mkdir -p public
           python fetch_rss.py
-          # 如果脚本直接在仓库根生成文件，手动移动到 public
-          mv path/to/generated.rss public/ || true
+          mv feed.xml public/feed.xml
 
-      - name: Deploy to GitHub Pages (only publish ./public)
-        uses: peaceiris/actions-gh-pages@v3
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./public
           publish_branch: gh-pages
-          commit_message: "Deploy generated pages [skip ci]"
+          commit_message: "Deploy RSS feed [skip ci]"
