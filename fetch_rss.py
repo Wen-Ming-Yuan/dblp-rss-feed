@@ -6,6 +6,7 @@ import xml.sax.saxutils as saxutils
 from collections import Counter
 from email.utils import formatdate
 from urllib.parse import quote
+from datetime import datetime
 
 import aiohttp
 from playwright.async_api import async_playwright
@@ -50,8 +51,8 @@ STOPWORDS = set(
 
 WORD_REGEX = re.compile(r"[a-zA-Z0-9]+")
 EMAIL = "your-email@example.com"  # TODO: 换成你的真实邮箱
-MAX_PER_CONF = 100
-OPENALEX_CONCURRENCY = 10
+MAX_PER_CONF = 1000
+OPENALEX_CONCURRENCY = 20
 SEMAPHORE = asyncio.Semaphore(OPENALEX_CONCURRENCY)
 
 
@@ -187,10 +188,21 @@ async def main():
                 # 会把相近 stream 的论文混进来（如 WWW 混入 SWC）。
                 # 从 streamid 推导 key 前缀做白名单过滤。
                 expected_prefix = streamid.replace("streamid:", "").rstrip(":") + "/"
+                current_year = datetime.now().year
+                min_year = current_year - 1  # 近似最近 365 天：保留今年 + 去年
+                def is_recent_and_valid(h):
+                    info = h.get("info", {})
+                    key = info.get("key", "")
+                    if not key.startswith(expected_prefix):
+                        return False
+                    try:
+                        return int(info.get("year", 0)) >= min_year
+                    except (TypeError, ValueError):
+                        return False
                 before = len(hits)
-                hits = [h for h in hits if h.get("info", {}).get("key", "").startswith(expected_prefix)]
+                hits = [h for h in hits if is_recent_and_valid(h)]
                 if before != len(hits):
-                    print(f"  过滤掉 {before - len(hits)} 条非 {short_name} 论文", flush=True)
+                    print(f"  过滤掉 {before - len(hits)} 条（非 {short_name} 或早于 {min_year} 年）", flush=True)
 
                 if not hits:
                     print(f"  {short_name} 过滤后无结果", flush=True)
