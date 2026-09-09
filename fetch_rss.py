@@ -173,7 +173,13 @@ async def main():
                     <item>
                         <title>{title}</title>
                         <link>{saxutils.escape(link)}</link>
-                        <description>{saxutils.escape(f"会议/期刊: {venue_name or short_name} ({ccf_level})\n作者: {authors} | 年份: {year}\n关键词: {keywords_str}\n摘要: {abstract}\n具体内容链接: {full_text_url or link}")}</description>
+                        <description>{saxutils.escape(f"会议: {venue_name or short_name} 
+                        作者: {authors} 
+                        年份: {year} 
+                        关键词: {keywords_str}
+                        摘要: {abstract}
+                        具体内容链接: {full_text_url or link}")}
+                        </description>
                         <pubDate>{pub_date}</pubDate>
                     </item>""")
             else:
