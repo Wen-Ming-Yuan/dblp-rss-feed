@@ -168,20 +168,31 @@ async def main():
                     abstract = saxutils.escape(abstract)
                     keywords_str = ", ".join(keywords_list)
                     keywords_str = saxutils.escape(keywords_str)
-                    
-                    rss_items.append(f"""
-                    <item>
-                        <title>{title}</title>
-                        <link>{saxutils.escape(link)}</link>
-                        <description>{saxutils.escape(f"会议: {venue_name or short_name} 
-                        作者: {authors} 
-                        年份: {year} 
-                        关键词: {keywords_str}
-                        摘要: {abstract}
-                        具体内容链接: {full_text_url or link}")}
-                        </description>
-                        <pubDate>{pub_date}</pubDate>
-                    </item>""")
+                    venue_esc = saxutils.escape(venue_name or short_name)
+authors_esc = saxutils.escape(authors)
+year_esc = saxutils.escape(str(year))
+keywords_esc = keywords_str  # 已在上面 saxutils.escape 过
+abstract_esc = abstract      # 已在上面 saxutils.escape 过
+full_link_esc = saxutils.escape(full_text_url or link)
+link_esc = saxutils.escape(link)
+                    # 使用 HTML 换行并在具体内容链接处放一个可点的 href
+description_html = (
+    f"会议: {venue_esc}<br/>"
+    f"作者: {authors_esc}<br/>"
+    f"年份: {year_esc}<br/>"
+    f"关键词: {keywords_esc}<br/>"
+    f"摘要: {abstract_esc}<br/>"
+    f"具体内容链接: <a href=\"{full_link_esc}\">{full_link_esc}</a>"
+)
+
+rss_items.append(
+    "<item>"
+    f"<title>{title}</title>"
+    f"<link>{link_esc}</link>"
+    f"<description><![CDATA[{description_html}]]></description>"
+    f"<pubDate>{pub_date}</pubDate>"
+    "</item>"
+)
             else:
                 print(f"跳过 {short_name}")
             
