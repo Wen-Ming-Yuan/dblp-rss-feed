@@ -212,7 +212,7 @@ async def main():
         for conf, short_name, ccf_level in CONFERENCES:
             # 构造URL并进行URL编码
             encoded_conf = quote(conf, safe='')
-            url = f"https://dblp.org/search/publ/api?q={encoded_conf}&h=10000&format=json"
+            url = f"https://dblp.org/search/publ/api?q={encoded_conf}&h=1000&format=json"
             
             print(f"正在抓取: {conf}")
             data = await fetch_data(page, url)
@@ -246,7 +246,7 @@ async def main():
                         <title>{title}</title>
                         <link>{saxutils.escape(link)}</link>
                         <description>
-                            <b>会议/期刊:</b> {saxutils.escape(venue_name or short_name)} ({ccf_level})<br>
+                            <b>会议:</b> {saxutils.escape(venue_name or short_name)} ({ccf_level})<br>
                             <b>作者:</b> {saxutils.escape(authors)} | <b>年份:</b> {year}<br><br>
                             <b>摘要:</b> {abstract}<br><br>
                             <b>具体内容链接:</b> {saxutils.escape(full_text_url or link)}
