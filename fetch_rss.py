@@ -101,10 +101,18 @@ async def fetch_details_from_openalex(doi_url):
             primary_loc = data.get("primary_location") or {}
             source = primary_loc.get("source") or {}
             venue_name = source.get("display_name", "")
+            keywords_list = []
+            for kw in data.get("keywords", []) or []:
+                keywords_list.append(kw.get("display_name", ""))
+            if not keywords_list:
+                for concept in (data.get("concepts", []) or [])[:5]:
+                    keywords_list.append(concept.get("display_name", ""))
             
             # 获取具体内容链接（优先取全文，其次取DOI）
             full_text_url = data.get("best_oa_location", {}).get("pdf_url") or data.get("doi")
-            return venue_name, abstract, full_text_url
+
+
+            return venue_name, abstract, full_text_url,keywords_list
     except Exception as e:
         pass
     return "", "", ""
@@ -170,14 +178,17 @@ async def main():
                     except:
                         pub_date = formatdate(time.time(), usegmt=True)
                     # 从OpenAlex补充期刊名、摘要和全文链接
-                    venue_name, abstract, full_text_url = await fetch_details_from_openalex(link)
+                    raw_title = info.get("title", "")
+                    venue_name, abstract, full_text_url, keywords_list= await fetch_details_from_openalex(link,raw_title)
                     abstract = saxutils.escape(abstract)
+                    keywords_str = ", ".join(keywords_list)
+                    keywords_str = saxutils.escape(keywords_str)
                     rss_items.append(f"""
                     <item>
                         <title>{title}</title>
                         <link>{saxutils.escape(link)}</link>
                         <description>
-                       <b>会议/期刊:</b> {saxutils.escape(venue_name or short_name)} ({ccf_level})<br>
+                            <b>会议:</b> {saxutils.escape(venue_name or short_name)} ({ccf_level})<br>
                             <b>作者:</b> {saxutils.escape(authors)} | <b>年份:</b> {year}<br><br>
                             <b>摘要:</b> {abstract}<br><br>
                             <b>具体内容链接:</b> {saxutils.escape(full_text_url or link)}
