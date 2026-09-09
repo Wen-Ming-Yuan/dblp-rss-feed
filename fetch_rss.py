@@ -1,12 +1,13 @@
 import asyncio
 import json
+import random
 import re
 import time
 import xml.sax.saxutils as saxutils
 from collections import Counter
+from datetime import datetime
 from email.utils import formatdate
 from urllib.parse import quote
-from datetime import datetime
 
 import aiohttp
 from playwright.async_api import async_playwright
@@ -52,8 +53,8 @@ STOPWORDS = set(
 )
 
 WORD_REGEX = re.compile(r"[a-zA-Z0-9]+")
-EMAIL = "1941870298@qq.com"  # TODO: 换成你的真实邮箱
-MAX_PER_CONF = 1000
+EMAIL = "1941870298@qq.com"
+PAGE_SIZE = 200          # 每页条数，避免单次响应过大
 OPENALEX_CONCURRENCY = 20
 SEMAPHORE = asyncio.Semaphore(OPENALEX_CONCURRENCY)
 
@@ -91,21 +92,56 @@ def extract_keywords(text, top_n=8):
     return [w for w, _ in Counter(filtered).most_common(top_n)]
 
 
-async def fetch_dblp_json(page, url):
-    for attempt in range(3):
+async def fetch_dblp_page(page, url):
+    """抓取单页 DBLP JSON，带强重试和随机退避。"""
+    for attempt in range(5):
         try:
-            resp = await page.goto(url, wait_until="networkidle", timeout=45000)
+            resp = await page.goto(url, wait_until="domcontentloaded", timeout=90000)
             if resp and resp.status == 200:
                 body = await resp.text()
                 if "<html" in body.lower() or "anubis" in body.lower():
-                    print("  触发 Anubis，重试...", flush=True)
-                    await page.wait_for_timeout(5000)
+                    wait = 15 + attempt * 10 + random.uniform(0, 8)
+                    print(f"    触发 Anubis，{wait:.0f}s 后重试（第 {attempt + 1}/5 次）", flush=True)
+                    await page.wait_for_timeout(int(wait * 1000))
                     continue
                 return json.loads(body)
         except Exception as e:
-            print(f"  DBLP 抓取失败（第 {attempt + 1} 次）: {e}", flush=True)
-            await page.wait_for_timeout(3000)
+            wait = 10 + attempt * 8 + random.uniform(0, 5)
+            print(f"    DBLP 抓取失败（第 {attempt + 1}/5 次）: {e}，{wait:.0f}s 后重试", flush=True)
+            await page.wait_for_timeout(int(wait * 1000))
     return None
+
+
+async def fetch_all_hits(page, streamid):
+    """分页抓取该 stream 的全部 hits，直到无更多数据。"""
+    all_hits = []
+    f = 0
+    while True:
+        q = quote(streamid, safe='')
+        url = (
+            f"https://dblp.org/search/publ/api?q={q}"
+            f"&h={PAGE_SIZE}&f={f}&format=json"
+        )
+        data = await fetch_dblp_page(page, url)
+        if not data:
+            # 某一页失败则终止该会议（已抓到的保留）
+            break
+
+        hits = data.get("result", {}).get("hits", {}).get("hit", [])
+        if not hits:
+            break
+
+        all_hits.extend(hits)
+
+        # 如果返回不足一页，说明到底了
+        if len(hits) < PAGE_SIZE:
+            break
+
+        f += PAGE_SIZE
+        # 页间随机停顿，降低 Anubis 触发概率
+        await page.wait_for_timeout(int(random.uniform(2000, 5000)))
+
+    return all_hits
 
 
 async def fetch_abstract(session, title, doi=None):
@@ -163,6 +199,9 @@ def build_item(hit, short_name, ccf_level, abstract):
 
 
 async def main():
+    current_year = datetime.now().year
+    min_year = current_year - 1  # 近似 365 天：今年 + 去年
+
     async with async_playwright() as p:
         browser = await p.chromium.launch(
             headless=True,
@@ -176,21 +215,28 @@ async def main():
         items = []
         async with aiohttp.ClientSession() as session:
             for idx, (streamid, short_name, ccf_level) in enumerate(CONFERENCES, 1):
-                url = f"https://dblp.org/search/publ/api?q={quote(streamid, safe='')}&h={MAX_PER_CONF}&format=json"
                 print(f"[{idx}/{len(CONFERENCES)}] 抓取 {short_name} ...", flush=True)
 
-                data = await fetch_dblp_json(page, url)
-                if not data:
+                hits = await fetch_all_hits(page, streamid)
+                if not hits:
                     print(f"  跳过 {short_name}", flush=True)
                     continue
 
-                hits = data.get("result", {}).get("hits", {}).get("hit", [])
-
-               
+                # 黑名单过滤（SWC 等已知误匹配）
                 before = len(hits)
-                hits = [h for h in hits if not h.get("info", {}).get("key", "").startswith(BLACKLIST_PREFIXES)]
+                hits = [
+                    h for h in hits
+                    if not h.get("info", {}).get("key", "").startswith(BLACKLIST_PREFIXES)
+                ]
+
+                # 年份过滤：只保留今年 + 去年
+                hits = [
+                    h for h in hits
+                    if int(h.get("info", {}).get("year", 0) or 0) >= min_year
+                ]
+
                 if before != len(hits):
-                    print(f"  过滤掉 {before - len(hits)} 条（非 {short_name} 或早于 {min_year} 年）", flush=True)
+                    print(f"  过滤掉 {before - len(hits)} 条（SWC 或早于 {min_year} 年）", flush=True)
 
                 if not hits:
                     print(f"  {short_name} 过滤后无结果", flush=True)
@@ -206,7 +252,9 @@ async def main():
                     items.append(build_item(hit, short_name, ccf_level, abstract))
 
                 print(f"  {short_name} 完成，{len(hits)} 篇", flush=True)
-                await page.wait_for_timeout(500)
+
+                # 会议之间随机停顿，降低 Anubis 触发
+                await page.wait_for_timeout(int(random.uniform(4000, 9000)))
 
         await browser.close()
 
