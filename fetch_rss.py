@@ -9,19 +9,56 @@ from playwright.async_api import async_playwright
 
 # 第七版CCF推荐目录中的A类会议（使用官方 streamid 格式）
 CONFERENCES = [
-    "streamid:conf/ppopp:", "streamid:conf/fast:", "streamid:conf/dac:", "streamid:conf/hpca:", "streamid:conf/micro:", 
-    "streamid:conf/sc:", "streamid:conf/asplos:", "streamid:conf/isca:", "streamid:conf/atc:", "streamid:conf/eurosys:", "streamid:conf/hpdc:",
-    "streamid:conf/sigcomm:", "streamid:conf/mobicom:", "streamid:conf/infocom:", "streamid:conf/nsdi:",
-    "streamid:conf/ccs:", "streamid:conf/eurocrypt:", "streamid:conf/sp:", "streamid:conf/crypto:", "streamid:conf/uss:", "streamid:conf/ndss:",
-    "streamid:conf/pldi:", "streamid:conf/popl:", "streamid:conf/sigsoft:", "streamid:conf/sosp:", "streamid:conf/oopsla:", 
-    "streamid:conf/kbse:", "streamid:conf/icse:", "streamid:conf/issta:", "streamid:conf/osdi:", "streamid:conf/fm:",
-    "streamid:conf/sigmod:", "streamid:conf/kdd:", "streamid:conf/icde:", "streamid:conf/sigir:", "streamid:conf/vldb:",
-    "streamid:conf/stoc:", "streamid:conf/soda:", "streamid:conf/cav:", "streamid:conf/focs:", "streamid:conf/lics:",
-    "streamid:conf/mm:", "streamid:conf/siggraph:", "streamid:conf/vr:", "streamid:conf/visualization:",
-    "streamid:conf/aaai:", "streamid:conf/nips:", "streamid:conf/acl:", "streamid:conf/cvpr:", "streamid:conf/iccv:", "streamid:conf/icml:", "streamid:conf/iclr:",
-    "streamid:conf/cscw:", "streamid:conf/chi:", "streamid:conf/huc:", "streamid:conf/uist:",
-    "streamid:conf/www:", "streamid:conf/rtss:",
-]
+    # 计算机体系结构/并行与分布计算/存储系统 (A类)
+    ("streamid:conf/ppopp:", "PPoPP", "CCF A"), ("streamid:conf/fast:", "FAST", "CCF A"), 
+    ("streamid:conf/dac:", "DAC", "CCF A"), ("streamid:conf/hpca:", "HPCA", "CCF A"), 
+    ("streamid:conf/micro:", "MICRO", "CCF A"), ("streamid:conf/sc:", "SC", "CCF A"),
+    ("streamid:conf/asplos:", "ASPLOS", "CCF A"), ("streamid:conf/isca:", "ISCA", "CCF A"),
+    ("streamid:conf/atc:", "USENIX ATC", "CCF A"), ("streamid:conf/eurosys:", "EuroSys", "CCF A"), 
+    ("streamid:conf/hpdc:", "HPDC", "CCF A"),
+    
+    # 计算机网络 (A类)
+    ("streamid:conf/sigcomm:", "SIGCOMM", "CCF A"), ("streamid:conf/mobicom:", "MobiCom", "CCF A"), 
+    ("streamid:conf/infocom:", "INFOCOM", "CCF A"), ("streamid:conf/nsdi:", "NSDI", "CCF A"),
+
+    # 网络与信息安全 (A类)
+    ("streamid:conf/ccs:", "CCS", "CCF A"), ("streamid:conf/eurocrypt:", "EUROCRYPT", "CCF A"), 
+    ("streamid:conf/sp:", "S&P", "CCF A"), ("streamid:conf/crypto:", "CRYPTO", "CCF A"), 
+    ("streamid:conf/uss:", "USENIX Security", "CCF A"), ("streamid:conf/ndss:", "NDSS", "CCF A"),
+
+    # 软件工程/系统软件/程序设计语言 (A类)
+    ("streamid:conf/pldi:", "PLDI", "CCF A"), ("streamid:conf/popl:", "POPL", "CCF A"), 
+    ("streamid:conf/sigsoft:", "FSE", "CCF A"), ("streamid:conf/sosp:", "SOSP", "CCF A"), 
+    ("streamid:conf/oopsla:", "OOPSLA", "CCF A"), ("streamid:conf/kbse:", "ASE", "CCF A"),
+    ("streamid:conf/icse:", "ICSE", "CCF A"), ("streamid:conf/issta:", "ISSTA", "CCF A"), 
+    ("streamid:conf/osdi:", "OSDI", "CCF A"), ("streamid:conf/fm:", "FM", "CCF A"),
+
+    # 数据库/数据挖掘/内容检索 (A类)
+    ("streamid:conf/sigmod:", "SIGMOD", "CCF A"), ("streamid:conf/kdd:", "KDD", "CCF A"), 
+    ("streamid:conf/icde:", "ICDE", "CCF A"), ("streamid:conf/sigir:", "SIGIR", "CCF A"), 
+    ("streamid:conf/vldb:", "VLDB", "CCF A"),
+
+    # 计算机科学理论 (A类)
+    ("streamid:conf/stoc:", "STOC", "CCF A"), ("streamid:conf/soda:", "SODA", "CCF A"), 
+    ("streamid:conf/cav:", "CAV", "CCF A"), ("streamid:conf/focs:", "FOCS", "CCF A"), 
+    ("streamid:conf/lics:", "LICS", "CCF A"),
+
+    # 计算机图形学与多媒体 (A类)
+    ("streamid:conf/mm:", "ACM MM", "CCF A"), ("streamid:conf/siggraph:", "SIGGRAPH", "CCF A"), 
+    ("streamid:conf/vr:", "VR", "CCF A"), ("streamid:conf/visualization:", "IEEE VIS", "CCF A"),
+
+    # 人工智能 (A类)
+    ("streamid:conf/aaai:", "AAAI", "CCF A"), ("streamid:conf/nips:", "NeurIPS", "CCF A"), 
+    ("streamid:conf/acl:", "ACL", "CCF A"), ("streamid:conf/cvpr:", "CVPR", "CCF A"), 
+    ("streamid:conf/iccv:", "ICCV", "CCF A"), ("streamid:conf/icml:", "ICML", "CCF A"), 
+    ("streamid:conf/iclr:", "ICLR", "CCF A"),
+
+    # 人机交互与普适计算 (A类)
+    ("streamid:conf/cscw:", "CSCW", "CCF A"), ("streamid:conf/chi:", "CHI", "CCF A"), 
+    ("streamid:conf/huc:", "UbiComp", "CCF A"), ("streamid:conf/uist:", "UIST", "CCF A"),
+
+    # 交叉/综合/新兴 (A类)
+    ("streamid:conf/www:", "WWW", "CCF A"), ("streamid:conf/rtss:", "RTSS", "CCF A"),]
 
 # 处理多样化的作者结构（字符串、单元素对象、列表）
 def parse_authors(authors_info):
@@ -36,6 +73,41 @@ def parse_authors(authors_info):
         authors_list.append(authors_info.get("text", ""))
     return ", ".join(filter(None, authors_list))
 
+# 还原OpenAlex摘要
+def reconstruct_abstract(inverted_index):
+    if not inverted_index:
+        return ""
+    word_positions = {}
+    for word, positions in inverted_index.items():
+        for pos in positions:
+            word_positions[pos] = word
+    return " ".join(word_positions[i] for i in sorted(word_positions.keys()))
+
+# 从OpenAlex获取期刊/会议全称、摘要和全文链接
+async def fetch_details_from_openalex(doi_url):
+    if not doi_url or "doi.org" not in doi_url:
+        return "", "", ""
+    try:
+        import requests
+        doi = doi_url.split("doi.org/")[-1]
+        url = f"https://api.openalex.org/works/https://doi.org/{doi}"
+        response = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+        if response.status_code == 200:
+            data = response.json()
+            abstract = reconstruct_abstract(data.get("abstract_inverted_index"))
+            
+            # 获取期刊或会议全名
+            venue_name = ""
+            primary_loc = data.get("primary_location") or {}
+            source = primary_loc.get("source") or {}
+            venue_name = source.get("display_name", "")
+            
+            # 获取具体内容链接（优先取全文，其次取DOI）
+            full_text_url = data.get("best_oa_location", {}).get("pdf_url") or data.get("doi")
+            return venue_name, abstract, full_text_url
+    except Exception as e:
+        pass
+    return "", "", ""
 async def fetch_data(page, url):
     """获取JSON数据，使用重试退避机制"""
     for attempt in range(3):
@@ -71,10 +143,10 @@ async def main():
         page = await context.new_page()
 
         rss_items = []
-        for conf in CONFERENCES:
+        for conf, short_name, ccf_level in CONFERENCES:
             # 构造URL并进行URL编码
             encoded_conf = quote(conf, safe='')
-            url = f"https://dblp.org/search/publ/api?q={encoded_conf}&h=50&format=json"
+            url = f"https://dblp.org/search/publ/api?q={encoded_conf}&h=10000&format=json"
             
             print(f"正在抓取: {conf}")
             data = await fetch_data(page, url)
@@ -97,12 +169,19 @@ async def main():
                         pub_date = formatdate(time.mktime(time.strptime(f"{year}-01-01", "%Y-%m-%d")), usegmt=True)
                     except:
                         pub_date = formatdate(time.time(), usegmt=True)
-                    
+                    # 从OpenAlex补充期刊名、摘要和全文链接
+                    venue_name, abstract, full_text_url = await fetch_details_from_openalex(link)
+                    abstract = saxutils.escape(abstract)
                     rss_items.append(f"""
                     <item>
                         <title>{title}</title>
                         <link>{saxutils.escape(link)}</link>
-                        <description>作者: {saxutils.escape(authors)} | 年份: {year}</description>
+                        <description>
+                            <b>会议/期刊:</b> {saxutils.escape(venue_name or short_name)} ({ccf_level})<br>
+                            <b>作者:</b> {saxutils.escape(authors)} | <b>年份:</b> {year}<br><br>
+                            <b>摘要:</b> {abstract}<br><br>
+                            <b>具体内容链接:</b> {saxutils.escape(full_text_url or link)}
+                       </description>
                         <pubDate>{pub_date}</pubDate>
                     </item>""")
             else:
