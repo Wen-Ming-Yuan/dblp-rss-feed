@@ -32,8 +32,11 @@ jobs:
           python -m playwright install --with-deps chromium
 
       - name: Run script (write output to ./public)
-        run: mkdir -p public
-             python fetch_rss.py --out-dir public
+        run: |
+          mkdir -p public
+          python fetch_rss.py
+          # 如果脚本直接在仓库根生成文件，手动移动到 public
+          mv path/to/generated.rss public/ || true
 
       - name: Deploy to GitHub Pages (only publish ./public)
         uses: peaceiris/actions-gh-pages@v3
@@ -41,4 +44,4 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./public
           publish_branch: gh-pages
-          commit_message: "Publish pages [skip ci]"
+          commit_message: "Deploy generated pages [skip ci]"
