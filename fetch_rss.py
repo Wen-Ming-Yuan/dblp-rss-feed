@@ -146,7 +146,7 @@ async def main():
         for conf in CONFERENCES:
             # 构造URL并进行URL编码
             encoded_conf = quote(conf, safe='')
-            url = f"https://dblp.org/search/publ/api?q={encoded_conf}&h=50&format=json"
+            url = f"https://dblp.org/search/publ/api?q={encoded_conf}&h=1000&format=json"
             
             print(f"正在抓取: {conf}")
             data = await fetch_data(page, url)
