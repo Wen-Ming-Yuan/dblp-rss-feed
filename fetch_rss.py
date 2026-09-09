@@ -1,10 +1,11 @@
+import asyncio
 import json
 import re
 import time
 import xml.sax.saxutils as saxutils
 from urllib.parse import quote
 from email.utils import formatdate
-import requests
+from playwright.async_api import async_playwright
 
 # 第七版CCF推荐目录中的A类会议
 CONFERENCES = [
@@ -41,7 +42,6 @@ CONFERENCES = [
     ("streamid:conf/www:", "WWW", "CCF A"), ("streamid:conf/rtss:", "RTSS", "CCF A"),
 ]
 
-
 def parse_authors(authors_info):
     authors_list = []
     if isinstance(authors_info, list):
@@ -54,7 +54,6 @@ def parse_authors(authors_info):
         authors_list.append(authors_info.get("text", ""))
     return ", ".join(filter(None, authors_list))
 
-
 def reconstruct_abstract(inverted_index):
     if not inverted_index:
         return ""
@@ -64,168 +63,144 @@ def reconstruct_abstract(inverted_index):
             word_positions[pos] = word
     return " ".join(word_positions[i] for i in sorted(word_positions.keys()))
 
-
-def get_json_with_retries(url, params=None, headers=None, retries=3, timeout=10):
-    headers = headers or {"User-Agent": "Mozilla/5.0"}
-    for i in range(retries):
-        try:
-            resp = requests.get(url, params=params, headers=headers, timeout=timeout)
-            if resp.status_code == 200:
-                try:
-                    return resp.json()
-                except ValueError:
-                    # Some endpoints may return non-JSON; return text in that case
-                    return None
-            else:
-                print(f"HTTP {resp.status_code} for {url} params={params} body={resp.text[:1000]}")
-        except requests.RequestException as e:
-            print(f"Request exception for {url}: {e}")
-        time.sleep(2 ** i)
-    return None
-
-
-def fetch_details_from_openalex(doi_url, title=None):
+# ✅ 修复：函数定义接受两个参数，并且保证任何情况下都返回4个值
+async def fetch_details_from_openalex(doi_url, title=None):
     try:
+        import requests
         headers = {"User-Agent": "Mozilla/5.0"}
         url = None
-
+        
         if doi_url and "doi.org" in doi_url:
             doi = doi_url.split("doi.org/")[-1]
-            # encode DOI for URL
-            doi = quote(doi, safe='')
-            url = f"https://api.openalex.org/works/doi:{doi}"
+            url = f"https://api.openalex.org/works/https://doi.org/{doi}"
         elif title and not doi_url:
             url = f"https://api.openalex.org/works?search={quote(title)}&per-page=1"
-
+        
         if not url:
             return "", "", "", []
 
-        data = get_json_with_retries(url, headers=headers)
-        if not data:
-            return "", "", "", []
+        response = requests.get(url, timeout=10, headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            if isinstance(data, dict) and "results" in data:
+                if not data["results"]:
+                    return "", "", "", []
+                data = data["results"][0]
 
-        # If search endpoint returned results list
-        if isinstance(data, dict) and "results" in data:
-            if not data["results"]:
-                return "", "", "", []
-            data = data["results"][0]
-
-        # abstract
-        abstract = data.get("abstract") or ""
-        if not abstract and data.get("abstract_inverted_index"):
             abstract = reconstruct_abstract(data.get("abstract_inverted_index"))
+            
+            venue_name = ""
+            primary_loc = data.get("primary_location") or {}
+            source = primary_loc.get("source") or {}
+            venue_name = source.get("display_name", "")
+            
+            full_text_url = data.get("best_oa_location", {}).get("pdf_url") or data.get("doi") or doi_url
 
-        # venue
-        venue_name = ""
-        primary_loc = data.get("primary_location") or {}
-        source = primary_loc.get("source") or {}
-        venue_name = source.get("display_name", "")
+            keywords_list = []
+            for kw in data.get("keywords", []) or []:
+                keywords_list.append(kw.get("display_name", ""))
+            if not keywords_list:
+                for concept in (data.get("concepts", []) or [])[:5]:
+                    keywords_list.append(concept.get("display_name", ""))
 
-        # full text url preference
-        best_oa = data.get("best_oa_location") or {}
-        full_text_url = best_oa.get("pdf_url") or data.get("doi") or doi_url or ""
-
-        # keywords / concepts
-        keywords_list = []
-        # OpenAlex 'keywords' field may not exist; prefer concepts
-        if data.get("keywords"):
-            for kw in data.get("keywords"):
-                if isinstance(kw, dict):
-                    keywords_list.append(kw.get("display_name") or kw.get("name") or "")
-                else:
-                    keywords_list.append(str(kw))
-        if not keywords_list:
-            for concept in (data.get("concepts") or [])[:5]:
-                keywords_list.append(concept.get("display_name", ""))
-
-        # filter empties
-        keywords_list = [k for k in keywords_list if k]
-
-        return venue_name, abstract, full_text_url, keywords_list
+            return venue_name, abstract, full_text_url, keywords_list
     except Exception as e:
         print(f"OpenAlex请求异常: {e}")
+    
     return "", "", "", []
 
+async def fetch_data(page, url):
+    for attempt in range(3):
+        try:
+            response = await page.goto(url, wait_until="networkidle", timeout=60000)
+            if response.status == 200:
+                body = await response.text()
+                if "<html" in body.lower() or "anubis" in body.lower():
+                    print(f"触发Anubis验证，重试中: {url}")
+                    await page.wait_for_timeout(5000)
+                    continue
+                return json.loads(body)
+            else:
+                print(f"HTTP {response.status} for {url}")
+        except Exception as e:
+            print(f"抓取失败 {url}, 尝试 {attempt + 1}: {e}")
+            await page.wait_for_timeout(3000)
+    return None
 
-def fetch_dblp_for_stream(streamid):
-    # Ensure we don't encode the whole query in a way that creates empty tokens.
-    # streamid should be like 'streamid:conf/ppopp:SIG'
-    encoded_conf = quote(streamid, safe='')
-    url = f"https://dblp.org/search/publ/api?q={encoded_conf}&h=1000&format=json"
-    return get_json_with_retries(url)
+async def main():
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(
+            headless=True,
+            args=['--disable-blink-features=AutomationControlled', '--disable-dev-shm-usage']
+        )
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            viewport={"width": 1280, "height": 800}
+        )
+        page = await context.new_page()
 
+        rss_items = []
+        for streamid, short_name, ccf_level in CONFERENCES:
+            encoded_conf = quote(streamid, safe='')
+            # ✅ 修复：h 参数限制为最大1000
+            url = f"https://dblp.org/search/publ/api?q={encoded_conf}&h=1000&format=json"
+            
+            print(f"正在抓取: {short_name}")
+            data = await fetch_data(page, url)
+            
+            if data:
+                hits = data.get("result", {}).get("hits", {}).get("hit", [])
+                for hit in hits:
+                    info = hit.get("info", {})
+                    title = re.sub(r'<[^>]+>', '', info.get("title", "无标题"))
+                    title = saxutils.escape(title)
+                    
+                    link = info.get("ee") or info.get("url", "")
+                    authors = parse_authors(info.get("authors", {}).get("author", []))
+                    year = info.get("year", "")
+                    
+                    pub_date = formatdate(time.mktime(time.strptime(f"{year}-01-01", "%Y-%m-%d")), usegmt=True) if year else formatdate(time.time(), usegmt=True)
+                    
+                    raw_title = info.get("title", "")
+                    #  修复：调用时传入两个参数
+                    venue_name, abstract, full_text_url, keywords_list = await fetch_details_from_openalex(link, raw_title)
+                    
+                    abstract = saxutils.escape(abstract)
+                    keywords_str = ", ".join(keywords_list)
+                    keywords_str = saxutils.escape(keywords_str)
+                    venue_esc = saxutils.escape(venue_name or short_name)
+authors_esc = saxutils.escape(authors)
+year_esc = saxutils.escape(str(year))
+keywords_esc = keywords_str  # 已在上面 saxutils.escape 过
+abstract_esc = abstract      # 已在上面 saxutils.escape 过
+full_link_esc = saxutils.escape(full_text_url or link)
+link_esc = saxutils.escape(link)
+                    # 使用 HTML 换行并在具体内容链接处放一个可点的 href
+description_html = (
+    f"会议: {venue_esc}<br/>"
+    f"作者: {authors_esc}<br/>"
+    f"年份: {year_esc}<br/>"
+    f"关键词: {keywords_esc}<br/>"
+    f"摘要: {abstract_esc}<br/>"
+    f"具体内容链接: <a href=\"{full_link_esc}\">{full_link_esc}</a>"
+)
 
-def build_rss():
-    rss_items = []
+rss_items.append(
+    "<item>"
+    f"<title>{title}</title>"
+    f"<link>{link_esc}</link>"
+    f"<description><![CDATA[{description_html}]]></description>"
+    f"<pubDate>{pub_date}</pubDate>"
+    "</item>"
+)
+            else:
+                print(f"跳过 {short_name}")
+            
+            await page.wait_for_timeout(1000)
 
-    for streamid, short_name, ccf_level in CONFERENCES:
-        # Skip obviously invalid streamids (those ending in ':' with nothing after)
-        if streamid.endswith(":"):
-            # DBLP still accepts queries like streamid:conf/ppopp: but we log it for clarity
-            print(f"注意：streamid 以 ':' 结尾：{streamid}，将继续尝试抓取")
+        await browser.close()
 
-        print(f"正在抓取: {short_name}")
-        data = fetch_dblp_for_stream(streamid)
-
-        if not data:
-            print(f"跳过 {short_name}（未能从 DBLP 获取数据）")
-            continue
-
-        hits = data.get("result", {}).get("hits", {}).get("hit", [])
-        for hit in hits:
-            info = hit.get("info", {})
-            title = re.sub(r'<[^>]+>', '', info.get("title", "无标题"))
-            title = saxutils.escape(title)
-
-            link = info.get("ee") or info.get("url") or ""
-            authors = parse_authors(info.get("authors", {}).get("author", []))
-            year = info.get("year", "")
-
-            try:
-                if year:
-                    pub_time = time.mktime(time.strptime(f"{year}-01-01", "%Y-%m-%d"))
-                    pub_date = formatdate(pub_time, usegmt=True)
-                else:
-                    pub_date = formatdate(time.time(), usegmt=True)
-            except Exception:
-                pub_date = formatdate(time.time(), usegmt=True)
-
-            raw_title = info.get("title", "")
-            venue_name, abstract, full_text_url, keywords_list = fetch_details_from_openalex(link, raw_title)
-
-            abstract = saxutils.escape(abstract or "")
-            keywords_str = ", ".join(keywords_list or [])
-            keywords_str = saxutils.escape(keywords_str)
-            venue_esc = saxutils.escape(venue_name or short_name)
-            authors_esc = saxutils.escape(authors)
-            year_esc = saxutils.escape(str(year))
-            keywords_esc = keywords_str
-            abstract_esc = abstract
-            full_link_esc = saxutils.escape(full_text_url or link)
-            link_esc = saxutils.escape(link)
-
-            description_html = (
-                f"会议: {venue_esc}<br/>"
-                f"作者: {authors_esc}<br/>"
-                f"年份: {year_esc}<br/>"
-                f"关键词: {keywords_esc}<br/>"
-                f"摘要: {abstract_esc}<br/>"
-                f"具体内容链接: <a href=\"{full_link_esc}\">{full_link_esc}</a>"
-            )
-
-            rss_items.append(
-                "<item>"
-                f"<title>{title}</title>"
-                f"<link>{link_esc}</link>"
-                f"<description><![CDATA[{description_html}]]></description>"
-                f"<pubDate>{pub_date}</pubDate>"
-                "</item>"
-            )
-
-        # be polite
-        time.sleep(1)
-
-    rss_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+        rss_content = f"""<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
 <channel>
 <title>CCF A类会议 Feed</title>
@@ -235,10 +210,9 @@ def build_rss():
 </channel>
 </rss>"""
 
-    with open("feed.xml", "w", encoding="utf-8") as f:
-        f.write(rss_content)
-    print(f"成功生成 feed.xml，共 {len(rss_items)} 条记录")
-
+        with open("feed.xml", "w", encoding="utf-8") as f:
+            f.write(rss_content)
+        print(f"成功生成 feed.xml，共 {len(rss_items)} 条记录")
 
 if __name__ == "__main__":
-    build_rss()
+    asyncio.run(main())
