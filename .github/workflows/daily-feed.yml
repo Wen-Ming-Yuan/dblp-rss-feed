@@ -26,7 +26,7 @@ jobs:
 
       - name: Generate RSS
         run: |
-          python fetch_rss.py
+          python -u fetch_rss.py
           mkdir -p public
           mv feed.xml public/feed.xml
 
