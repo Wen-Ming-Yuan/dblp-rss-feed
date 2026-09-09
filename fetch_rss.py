@@ -45,12 +45,14 @@ CONFERENCES = [
     ("streamid:conf/www:", "WWW", "CCF A"), ("streamid:conf/rtss:", "RTSS", "CCF A"),
 ]
 
+BLACKLIST_PREFIXES = ("conf/swc/",)
+
 STOPWORDS = set(
     "a about above after again against all am an and any are aren't as at be because been before being below between both but by can can't cannot could couldn't did didn't do does doesn't doing don't down during each few for from further had hadn't has hasn't have haven't having he he'd he'll he's her here here's hers herself him himself his how how's i i'd i'll i'm i've if in into is isn't it it's its itself let's me more most mustn't my myself no nor not of off on once only or other ought our ours ourselves out over own same shan't she she'd she'll she's should shouldn't so some such than that that's the their theirs them themselves then there there's these they they'd they'll they're they've this those through to too under until up very was wasn't we we'd we'll we're we've were weren't what what's when when's where where's which while who who's whom why why's with won't would wouldn't you you'd you'll you're you've your yours yourself yourselves".split()
 )
 
 WORD_REGEX = re.compile(r"[a-zA-Z0-9]+")
-EMAIL = "your-email@example.com"  # TODO: 换成你的真实邮箱
+EMAIL = "1941870298@qq.com"  # TODO: 换成你的真实邮箱
 MAX_PER_CONF = 1000
 OPENALEX_CONCURRENCY = 20
 SEMAPHORE = asyncio.Semaphore(OPENALEX_CONCURRENCY)
@@ -184,23 +186,9 @@ async def main():
 
                 hits = data.get("result", {}).get("hits", {}).get("hit", [])
 
-                # 精确过滤：DBLP search API 对 streamid 做模糊匹配，
-                # 会把相近 stream 的论文混进来（如 WWW 混入 SWC）。
-                # 从 streamid 推导 key 前缀做白名单过滤。
-                expected_prefix = streamid.replace("streamid:", "").rstrip(":") + "/"
-                current_year = datetime.now().year
-                min_year = current_year - 1  # 近似最近 365 天：保留今年 + 去年
-                def is_recent_and_valid(h):
-                    info = h.get("info", {})
-                    key = info.get("key", "")
-                    if not key.startswith(expected_prefix):
-                        return False
-                    try:
-                        return int(info.get("year", 0)) >= min_year
-                    except (TypeError, ValueError):
-                        return False
+               
                 before = len(hits)
-                hits = [h for h in hits if is_recent_and_valid(h)]
+                hits = [h for h in hits if if not h.get("info", {}).get("key", "").startswith(BLACKLIST_PREFIXES)]
                 if before != len(hits):
                     print(f"  过滤掉 {before - len(hits)} 条（非 {short_name} 或早于 {min_year} 年）", flush=True)
 
@@ -218,7 +206,7 @@ async def main():
                     items.append(build_item(hit, short_name, ccf_level, abstract))
 
                 print(f"  {short_name} 完成，{len(hits)} 篇", flush=True)
-                await page.wait_for_timeout(300)
+                await page.wait_for_timeout(500)
 
         await browser.close()
 
