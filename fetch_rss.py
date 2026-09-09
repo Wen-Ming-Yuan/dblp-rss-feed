@@ -134,7 +134,6 @@ async def fetch_data(page, url):
         try:
             # 直接获取响应体 (response.text)，避免 inner_text 解析 JSON 带来的隐患
             response = await page.goto(url, wait_until="networkidle", timeout=60000)
-            if response.status == 200:
             if response is None:
                 print(f"No response for navigation to {url}")
                 await page.wait_for_timeout(3000)
@@ -147,9 +146,13 @@ async def fetch_data(page, url):
                     print(f"触发Anubis验证，重试中: {url}")
                     await page.wait_for_timeout(5000)
                     continue
-                return json.loads(body)
+                try:
+                    return json.loads(body)
+                except Exception as e:
+                    print(f"解析 JSON 失败 {url}: {e}")
+                    return None
             else:
-                print(f"HTTP {response.status} for {url}")
+                print(f"HTTP {status} for {url}")
         except Exception as e:
             print(f"抓取失败 {url}, 尝试 {attempt + 1}: {e}")
             await page.wait_for_timeout(3000)
@@ -157,7 +160,7 @@ async def fetch_data(page, url):
 
 async def main():
     async with async_playwright() as p:
-        # 添加规避自动检测的参数
+        # 添加规避自动检测的数
         browser = await p.chromium.launch(
             headless=True,
             args=['--disable-blink-features=AutomationControlled', '--disable-dev-shm-usage']
@@ -197,6 +200,7 @@ async def main():
                         pub_date = formatdate(time.time(), usegmt=True)
                     # 从OpenAlex补充期刊名、摘要和全文链接
                     raw_title = info.get("title", "")
+                    venue_name, abstract, full_text_url, keywords_list = await fetch_details_from_openalex(link, raw_title)
                     abstract = saxutils.escape(abstract)
                     keywords_str = ", ".join(keywords_list)
                     keywords_str = saxutils.escape(keywords_str)
