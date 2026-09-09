@@ -11,9 +11,11 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
@@ -24,8 +26,8 @@ jobs:
 
       - name: Generate RSS
         run: |
-          mkdir -p public
           python fetch_rss.py
+          mkdir -p public
           mv feed.xml public/feed.xml
 
       - name: Deploy to GitHub Pages
@@ -34,4 +36,3 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./public
           publish_branch: gh-pages
-          commit_message: "Deploy RSS feed [skip ci]"
