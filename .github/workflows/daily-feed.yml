@@ -31,12 +31,14 @@ jobs:
           python -m pip install playwright
           python -m playwright install --with-deps chromium
 
-      - name: Run script
-        run: python fetch_rss.py
+      - name: Run script (write output to ./public)
+        run: mkdir -p public
+             python fetch_rss.py --out-dir public
 
-      - name: Deploy to GitHub Pages
+      - name: Deploy to GitHub Pages (only publish ./public)
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./
+          publish_dir: ./public
           publish_branch: gh-pages
+          commit_message: "Publish pages [skip ci]"
