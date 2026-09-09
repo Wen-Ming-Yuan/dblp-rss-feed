@@ -135,6 +135,12 @@ async def fetch_data(page, url):
             # 直接获取响应体 (response.text)，避免 inner_text 解析 JSON 带来的隐患
             response = await page.goto(url, wait_until="networkidle", timeout=60000)
             if response.status == 200:
+            if response is None:
+                print(f"No response for navigation to {url}")
+                await page.wait_for_timeout(3000)
+                continue
+            status = response.status
+            if status == 200:
                 body = await response.text()
                 # 如果返回的是HTML（验证页面），则等待后重试
                 if "<html" in body.lower() or "anubis" in body.lower():
@@ -191,7 +197,6 @@ async def main():
                         pub_date = formatdate(time.time(), usegmt=True)
                     # 从OpenAlex补充期刊名、摘要和全文链接
                     raw_title = info.get("title", "")
-                    venue_name, abstract, full_text_url, keywords_list= await fetch_details_from_openalex(link,raw_title)
                     abstract = saxutils.escape(abstract)
                     keywords_str = ", ".join(keywords_list)
                     keywords_str = saxutils.escape(keywords_str)
