@@ -73,7 +73,7 @@ async def fetch_details_from_openalex(doi_url, title=None):
         if doi_url and "doi.org" in doi_url:
             doi = doi_url.split("doi.org/")[-1]
             url = f"https://api.openalex.org/works/https://doi.org/{doi}"
-        elif title:
+        elif title and not doi_url:
             url = f"https://api.openalex.org/works?search={quote(title)}&per-page=1"
         
         if not url:
@@ -168,21 +168,30 @@ async def main():
                     abstract = saxutils.escape(abstract)
                     keywords_str = ", ".join(keywords_list)
                     keywords_str = saxutils.escape(keywords_str)
-                    
-                    rss_items.append(f"""
-                    <item>
-                        <title>{title}</title>
-                        <link>{saxutils.escape(link)}</link>
-                        <keywords>{keywords_str}</keywords>
-                        <description>
-                            <b>会议/期刊:</b> {saxutils.escape(venue_name or short_name)} ({ccf_level})<br>
-                            <b>作者:</b> {saxutils.escape(authors)} | <b>年份:</b> {year}<br>
-                            <b>关键词:</b> {keywords_str}<br><br>
-                            <b>摘要:</b> {abstract}<br><br>
-                            <b>具体内容链接:</b> {saxutils.escape(full_text_url or link)}
-                        </description>
-                        <pubDate>{pub_date}</pubDate>
-                    </item>""")
+                    venue_esc = saxutils.escape(venue_name or short_name)
+                    authors_esc = saxutils.escape(authors)
+                    year_esc = saxutils.escape(str(year))
+                    keywords_esc = keywords_str  # 已在上面 saxutils.escape 过
+                    abstract_esc = abstract      # 已在上面 saxutils.escape 过
+                    full_link_esc = saxutils.escape(full_text_url or link)
+                    link_esc = saxutils.escape(link)
+                    # 使用 HTML 换行并在具体内容链接处放一个可点的 href
+                    description_html = (
+                        f"会议: {venue_esc}<br/>"
+                        f"作者: {authors_esc}<br/>"
+                        f"年份: {year_esc}<br/>"
+                        f"关键词: {keywords_esc}<br/>"
+                        f"摘要: {abstract_esc}<br/>"
+                        f"具体内容链接: <a href=\"{full_link_esc}\">{full_link_esc}</a>"
+                        )
+                    rss_items.append(
+                        "<item>"
+                        f"<title>{title}</title>"
+                        f"<link>{link_esc}</link>"
+                        f"<description><![CDATA[{description_html}]]></description>"
+                        f"<pubDate>{pub_date}</pubDate>"
+                        "</item>"
+                        )
             else:
                 print(f"跳过 {short_name}")
             
