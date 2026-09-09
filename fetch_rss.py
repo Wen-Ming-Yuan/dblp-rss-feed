@@ -84,54 +84,112 @@ def reconstruct_abstract(inverted_index):
     return " ".join(word_positions[i] for i in sorted(word_positions.keys()))
 
 # 从OpenAlex获取期刊/会议全称、摘要和全文链接
-async def fetch_details_from_openalex(doi_url):
-    if not doi_url or "doi.org" not in doi_url:
-        return "", "", ""
+async def fetch_details_from_openalex(doi_url, title=None):
+    """
+    doi_url: 可能是包含 doi.org 的 URL，也可能为 None
+    title: 当无法通过 DOI 获取时，使用标题在 OpenAlex 上搜索第一条结果作为回退
+    返回: (venue_name, abstract, full_text_url, keywords_list)
+    """
     try:
         import requests # pyright: ignore[reportMissingModuleSource]
-        doi = doi_url.split("doi.org/")[-1]
-        url = f"https://api.openalex.org/works/https://doi.org/{doi}"
-        response = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
-        if response.status_code == 200:
-            data = response.json()
-            abstract = reconstruct_abstract(data.get("abstract_inverted_index"))
-            
-            # 获取期刊或会议全名
-            venue_name = ""
-            primary_loc = data.get("primary_location") or {}
-            source = primary_loc.get("source") or {}
-            venue_name = source.get("display_name", "")
-            keywords_list = []
-            for kw in data.get("keywords", []) or []:
-                keywords_list.append(kw.get("display_name", ""))
-            if not keywords_list:
-                for concept in (data.get("concepts", []) or [])[:5]:
-                    keywords_list.append(concept.get("display_name", ""))
-            
-            # 获取具体内容链接（优先取全文，其次取DOI）
-            full_text_url = data.get("best_oa_location", {}).get("pdf_url") or data.get("doi")
+        # 优先通过 DOI 获取
+        if doi_url and "doi.org" in doi_url:
+            try:
+                doi = doi_url.split("doi.org/")[-1]
+                url = f"https://api.openalex.org/works/https://doi.org/{doi}"
+                response = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+                if response.status_code == 200:
+                    data = response.json()
+                    abstract = reconstruct_abstract(data.get("abstract_inverted_index"))
 
+                    # 获取期刊或会议全名
+                    venue_name = ""
+                    primary_loc = data.get("primary_location") or {}
+                    source = primary_loc.get("source") or {}
+                    venue_name = source.get("display_name", "")
+                    keywords_list = []
+                    for kw in data.get("keywords", []) or []:
+                        if isinstance(kw, dict):
+                            keywords_list.append(kw.get("display_name", ""))
+                        elif isinstance(kw, str):
+                            keywords_list.append(kw)
+                    if not keywords_list:
+                        for concept in (data.get("concepts", []) or [])[:5]:
+                            keywords_list.append(concept.get("display_name", ""))
 
-            return venue_name, abstract, full_text_url,keywords_list
-    except Exception as e:
+                    # 获取具体内容链接（优先取全文，其次取 DOI URL）
+                    full_text_url = (data.get("best_oa_location") or {}).get("pdf_url") or data.get("doi")
+                    if full_text_url and full_text_url.startswith("10."):
+                        # 有时 OpenAlex 的 doi 字段只包含 DOI 本身
+                        full_text_url = f"https://doi.org/{full_text_url}"
+
+                    return venue_name, abstract, full_text_url or "", keywords_list
+            except Exception:
+                # DOI 查询失败，继续尝试标题搜索
+                pass
+
+        # 回退：使用标题搜索 OpenAlex（当 DOI 不可用或查询失败时）
+        if title:
+            try:
+                query = quote(title, safe='')
+                search_url = f"https://api.openalex.org/works?search={query}&per_page=1"
+                response = requests.get(search_url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+                if response.status_code == 200:
+                    data = response.json()
+                    results = data.get("results") or []
+                    if results:
+                        item = results[0]
+                        abstract = reconstruct_abstract(item.get("abstract_inverted_index"))
+                        venue_name = ""
+                        primary_loc = item.get("primary_location") or {}
+                        source = primary_loc.get("source") or {}
+                        venue_name = source.get("display_name", "")
+                        keywords_list = []
+                        for kw in item.get("keywords", []) or []:
+                            if isinstance(kw, dict):
+                                keywords_list.append(kw.get("display_name", ""))
+                            elif isinstance(kw, str):
+                                keywords_list.append(kw)
+                        if not keywords_list:
+                            for concept in (item.get("concepts", []) or [])[:5]:
+                                keywords_list.append(concept.get("display_name", ""))
+                        full_text_url = (item.get("best_oa_location") or {}).get("pdf_url") or item.get("doi") or ""
+                        if full_text_url and full_text_url.startswith("10."):
+                            full_text_url = f"https://doi.org/{full_text_url}"
+                        return venue_name, abstract, full_text_url, keywords_list
+            except Exception:
+                pass
+    except Exception:
+        # 如果 requests 等导入失败或其它异常，安静地降级为不返回详情
         pass
-    return "", "", ""
+
+    return "", "", "", []
+
 async def fetch_data(page, url):
     """获取JSON数据，使用重试退避机制"""
     for attempt in range(3):
         try:
             # 直接获取响应体 (response.text)，避免 inner_text 解析 JSON 带来的隐患
             response = await page.goto(url, wait_until="networkidle", timeout=60000)
-            if response.status == 200:
+            if response is None:
+                print(f"No response for navigation to {url}")
+                await page.wait_for_timeout(3000)
+                continue
+            status = response.status
+            if status == 200:
                 body = await response.text()
                 # 如果返回的是HTML（验证页面），则等待后重试
                 if "<html" in body.lower() or "anubis" in body.lower():
                     print(f"触发Anubis验证，重试中: {url}")
                     await page.wait_for_timeout(5000)
                     continue
-                return json.loads(body)
+                try:
+                    return json.loads(body)
+                except Exception as e:
+                    print(f"解析 JSON 失败 {url}: {e}")
+                    return None
             else:
-                print(f"HTTP {response.status} for {url}")
+                print(f"HTTP {status} for {url}")
         except Exception as e:
             print(f"抓取失败 {url}, 尝试 {attempt + 1}: {e}")
             await page.wait_for_timeout(3000)
@@ -139,7 +197,7 @@ async def fetch_data(page, url):
 
 async def main():
     async with async_playwright() as p:
-        # 添加规避自动检测的参数
+        # 添加规避自动检测的���数
         browser = await p.chromium.launch(
             headless=True,
             args=['--disable-blink-features=AutomationControlled', '--disable-dev-shm-usage']
@@ -179,7 +237,7 @@ async def main():
                         pub_date = formatdate(time.time(), usegmt=True)
                     # 从OpenAlex补充期刊名、摘要和全文链接
                     raw_title = info.get("title", "")
-                    venue_name, abstract, full_text_url, keywords_list= await fetch_details_from_openalex(link,raw_title)
+                    venue_name, abstract, full_text_url, keywords_list = await fetch_details_from_openalex(link, raw_title)
                     abstract = saxutils.escape(abstract)
                     keywords_str = ", ".join(keywords_list)
                     keywords_str = saxutils.escape(keywords_str)
@@ -188,11 +246,7 @@ async def main():
                         <title>{title}</title>
                         <link>{saxutils.escape(link)}</link>
                         <description>
-<<<<<<< HEAD
-                            <b>会议:</b> {saxutils.escape(venue_name or short_name)} ({ccf_level})<br>
-=======
                             <b>会议/期刊:</b> {saxutils.escape(venue_name or short_name)} ({ccf_level})<br>
->>>>>>> b2601b613e57ea95845828bf46e4204b20e20278
                             <b>作者:</b> {saxutils.escape(authors)} | <b>年份:</b> {year}<br><br>
                             <b>摘要:</b> {abstract}<br><br>
                             <b>具体内容链接:</b> {saxutils.escape(full_text_url or link)}
