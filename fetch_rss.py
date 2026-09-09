@@ -73,7 +73,7 @@ async def fetch_details_from_openalex(doi_url, title=None):
         if doi_url and "doi.org" in doi_url:
             doi = doi_url.split("doi.org/")[-1]
             url = f"https://api.openalex.org/works/https://doi.org/{doi}"
-        elif title:
+        elif title and not doi_url:
             url = f"https://api.openalex.org/works?search={quote(title)}&per-page=1"
         
         if not url:
@@ -173,14 +173,7 @@ async def main():
                     <item>
                         <title>{title}</title>
                         <link>{saxutils.escape(link)}</link>
-                        <keywords>{keywords_str}</keywords>
-                        <description>
-                            <b>会议/期刊:</b> {saxutils.escape(venue_name or short_name)} ({ccf_level})<br>
-                            <b>作者:</b> {saxutils.escape(authors)} | <b>年份:</b> {year}<br>
-                            <b>关键词:</b> {keywords_str}<br><br>
-                            <b>摘要:</b> {abstract}<br><br>
-                            <b>具体内容链接:</b> {saxutils.escape(full_text_url or link)}
-                        </description>
+                        <description>{saxutils.escape(f"会议/期刊: {venue_name or short_name} ({ccf_level})\n作者: {authors} | 年份: {year}\n关键词: {keywords_str}\n摘要: {abstract}\n具体内容链接: {full_text_url or link}")}</description>
                         <pubDate>{pub_date}</pubDate>
                     </item>""")
             else:
