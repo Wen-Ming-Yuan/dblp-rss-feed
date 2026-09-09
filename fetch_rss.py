@@ -49,7 +49,10 @@ STOPWORDS = set(
 )
 
 WORD_REGEX = re.compile(r"[a-zA-Z0-9]+")
-EMAIL = "1941870298@qq.com"  # TODO: 换成你的邮箱，OpenAlex 礼貌池需要
+EMAIL = "your-email@example.com"  # TODO: 换成你的真实邮箱
+MAX_PER_CONF = 100
+OPENALEX_CONCURRENCY = 10
+SEMAPHORE = asyncio.Semaphore(OPENALEX_CONCURRENCY)
 
 
 def parse_authors(authors_info):
@@ -86,46 +89,49 @@ def extract_keywords(text, top_n=8):
 
 
 async def fetch_dblp_json(page, url):
-    """用 Playwright 抓 DBLP API（绕过 Anubis）。"""
     for attempt in range(3):
         try:
-            resp = await page.goto(url, wait_until="networkidle", timeout=60000)
+            resp = await page.goto(url, wait_until="networkidle", timeout=45000)
             if resp and resp.status == 200:
                 body = await resp.text()
                 if "<html" in body.lower() or "anubis" in body.lower():
-                    print("触发 Anubis，重试...")
+                    print("  触发 Anubis，重试...", flush=True)
                     await page.wait_for_timeout(5000)
                     continue
                 return json.loads(body)
         except Exception as e:
-            print(f"DBLP 抓取失败（第 {attempt + 1} 次）: {e}")
+            print(f"  DBLP 抓取失败（第 {attempt + 1} 次）: {e}", flush=True)
             await page.wait_for_timeout(3000)
     return None
 
 
 async def fetch_abstract(session, title, doi=None):
-    """从 OpenAlex 按 DOI 或标题批量取摘要。"""
-    params = {"per-page": 1, "mailto": EMAIL}
-    if doi:
-        params["filter"] = f"doi:{doi}"
-    else:
-        params["search"] = title
-    try:
-        async with session.get("https://api.openalex.org/works", params=params, timeout=20) as resp:
-            if resp.status != 200:
-                return ""
-            data = await resp.json()
-            results = data.get("results", [])
-            if not results:
-                return ""
-            return reconstruct_abstract(results[0].get("abstract_inverted_index"))
-    except Exception:
-        return ""
+    async with SEMAPHORE:
+        params = {"per-page": 1, "mailto": EMAIL}
+        if doi:
+            params["filter"] = f"doi:{doi}"
+        else:
+            params["search"] = title
+        try:
+            async with session.get("https://api.openalex.org/works", params=params, timeout=10) as resp:
+                if resp.status != 200:
+                    return ""
+                data = await resp.json()
+                results = data.get("results", [])
+                if not results:
+                    return ""
+                return reconstruct_abstract(results[0].get("abstract_inverted_index"))
+        except Exception:
+            return ""
+
+
+def clean_title(info):
+    return re.sub(r"<[^>]+>", "", info.get("title", ""))
 
 
 def build_item(hit, short_name, ccf_level, abstract):
     info = hit.get("info", {})
-    title = saxutils.escape(re.sub(r"<[^>]+>", "", info.get("title", "无标题")))
+    title = saxutils.escape(clean_title(info) or "无标题")
     link = info.get("ee") or info.get("url", "")
     authors = parse_authors(info.get("authors", {}).get("author", []))
     year = info.get("year", "")
@@ -166,21 +172,41 @@ async def main():
 
         items = []
         async with aiohttp.ClientSession() as session:
-            for streamid, short_name, ccf_level in CONFERENCES:
-                url = f"https://dblp.org/search/publ/api?q={quote(streamid, safe='')}&h=1000&format=json"
-                print(f"抓取 {short_name} ...")
+            for idx, (streamid, short_name, ccf_level) in enumerate(CONFERENCES, 1):
+                url = f"https://dblp.org/search/publ/api?q={quote(streamid, safe='')}&h={MAX_PER_CONF}&format=json"
+                print(f"[{idx}/{len(CONFERENCES)}] 抓取 {short_name} ...", flush=True)
+
                 data = await fetch_dblp_json(page, url)
                 if not data:
-                    print(f"跳过 {short_name}")
+                    print(f"  跳过 {short_name}", flush=True)
                     continue
+
                 hits = data.get("result", {}).get("hits", {}).get("hit", [])
-                for hit in hits:
-                    info = hit.get("info", {})
-                    title = re.sub(r"<[^>]+>", "", info.get("title", ""))
-                    doi = info.get("doi", "")
-                    abstract = await fetch_abstract(session, title, doi)
+
+                # 精确过滤：DBLP search API 对 streamid 做模糊匹配，
+                # 会把相近 stream 的论文混进来（如 WWW 混入 SWC）。
+                # 从 streamid 推导 key 前缀做白名单过滤。
+                expected_prefix = streamid.replace("streamid:", "").rstrip(":") + "/"
+                before = len(hits)
+                hits = [h for h in hits if h.get("info", {}).get("key", "").startswith(expected_prefix)]
+                if before != len(hits):
+                    print(f"  过滤掉 {before - len(hits)} 条非 {short_name} 论文", flush=True)
+
+                if not hits:
+                    print(f"  {short_name} 过滤后无结果", flush=True)
+                    continue
+
+                titles = [clean_title(h.get("info", {})) for h in hits]
+                dois = [h.get("info", {}).get("doi", "") for h in hits]
+                abstracts = await asyncio.gather(
+                    *[fetch_abstract(session, t, d) for t, d in zip(titles, dois)]
+                )
+
+                for hit, abstract in zip(hits, abstracts):
                     items.append(build_item(hit, short_name, ccf_level, abstract))
-                await page.wait_for_timeout(500)
+
+                print(f"  {short_name} 完成，{len(hits)} 篇", flush=True)
+                await page.wait_for_timeout(300)
 
         await browser.close()
 
@@ -196,7 +222,7 @@ async def main():
 
     with open("feed.xml", "w", encoding="utf-8") as f:
         f.write(rss)
-    print(f"成功生成 feed.xml，共 {len(items)} 条记录")
+    print(f"成功生成 feed.xml，共 {len(items)} 条记录", flush=True)
 
 
 if __name__ == "__main__":
