@@ -1,38 +1,70 @@
-name: Generate DBLP RSS
+name: Update Conference RSS Feed
 
 on:
   schedule:
-    - cron: "0 8 * * *"
-  workflow_dispatch:
+    # 每天 UTC 20:00（北京时间次日 04:00）运行
+    - cron: '0 20 * * *'
+  workflow_dispatch:  # 支持手动触发，便于测试
+
+# 需要写权限：commit state 回主分支 + push 到 gh-pages
+permissions:
+  contents: write
 
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
 
-      - name: Set up Python
+    steps:
+      # 1. 拉取主分支（含 fetch_rss.py / requirements.txt）
+      - name: Checkout 主分支
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      # 2. 安装 Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      # 3. 安装依赖
+      - name: 安装依赖
         run: |
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
-          playwright install --with-deps chromium
 
-      - name: Generate RSS
+      # 4. 运行抓取脚本，注入 IEEE API Key
+      - name: 运行抓取脚本
+        env:
+          IEEE_API_KEY: ${{ secrets.IEEE_API_KEY }}
+        run: python fetch_rss.py
+
+      # 5. 确保增量状态文件存在（首次运行自动创建空文件）
+      - name: 确保 state 文件存在
         run: |
-          python -u fetch_rss.py
-          mkdir -p public
-          mv feed.xml public/feed.xml
+          [ -f state.json ] || echo '{}' > state.json
+          [ -f source_cache.json ] || echo '{}' > source_cache.json
 
-      - name: Deploy to GitHub Pages
+      # 6. 把增量状态提交回主分支，持久化
+      - name: 提交增量状态
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add state.json source_cache.json
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: update state [skip ci]"
+            git push origin main
+          else
+            echo "state 无变化，跳过 commit"
+          fi
+
+      # 7. 把 feed.xml 部署到 gh-pages 分支
+      - name: 部署 feed.xml 到 gh-pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./public
+          publish_dir: ./
           publish_branch: gh-pages
+          keep_files: true
+          include_files: feed.xml
