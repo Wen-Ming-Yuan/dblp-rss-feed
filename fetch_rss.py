@@ -435,12 +435,20 @@ def _norm_title(t):
 def _title_similarity(a, b):
     return difflib.SequenceMatcher(None, _norm_title(a), _norm_title(b)).ratio()
     
+def _author_match(or_authors, ol_authorships):
+    def surname(name):
+        parts = (name or "").lower().split()
+        return parts[-1] if parts else ""
+    or_set = {surname(a) for a in or_authors if a}
+    ol_set = {surname(a.get("author", {}).get("display_name", "")) for a in ol_authorships}
+    return bool(or_set & ol_set)
+    
 async def enrich_from_openalex(session, title,authors=None, year=None):
     """用标题去 OpenAlex 查元数据，补全 DOI / venue 全称 / 发表日期。"""
     if not title:
         return {}
     async with SEMAPHORE:
-       filter_parts = [f"title.search:{title}"]
+        filter_parts = [f"title.search:{title}"]
         if year:
             filter_parts.append(f"publication_year:{year}")
         params = {
@@ -520,13 +528,13 @@ def build_item_openalex(w, short_name, ccf_level,full_name=""):
     )
 
 
-def build_item_ieee(a, short_name, ccf_level):
+def build_item_ieee(a, short_name, ccf_level,full_name=""):
     title = saxutils.escape(a.get("title") or "无标题")
     link = a.get("html_url") or a.get("abstract_url") or ""
     authors = a.get("authors", {}).get("authors", [])
     authors_str = ", ".join(x.get("full_name", "") for x in authors)
     pub_date_str = a.get("publication_date") or ""
-    venue_name = a.get("publication_title", "")
+    venue_name = a.get("publication_title", "")or full_name
     abstract = a.get("abstract") or ""
     doi = a.get("doi") or ""
 
@@ -621,7 +629,7 @@ async def process_one(session, search_name, short_name, ccf_level, source_type, 
     if source_type == "openalex":
         sid = await resolve_source_id(session, search_name, full_name,source_cache)
         if not sid:
-            print(f"  无法解析 source，跳过 {full_name}", flush=True)
+            print(f"  source 解析失败，改用 display_name.search 兜底: {full_name}", flush=True)
             works = await fetch_openalex_works(session, None, year, last_val, fallback_search=full_name)
         else:
             works = await fetch_openalex_works(session, sid, year, last_val)
@@ -641,7 +649,7 @@ async def process_one(session, search_name, short_name, ccf_level, source_type, 
             print(f"  {short_name} 无新增", flush=True)
             return True
         for a in articles:
-            items.append(build_item_ieee(a, short_name, ccf_level))
+            items.append(build_item_ieee(a, short_name, ccf_level,full_name))
         # 更新 last_date（保留 next_start_record 游标）
         entry = state.get(state_key, {})
         if isinstance(entry, str):
@@ -667,28 +675,23 @@ async def process_one(session, search_name, short_name, ccf_level, source_type, 
             else n.get("content", {}).get("title", "")
             for n in notes
         ]
-        enriched = await asyncio.gather(
-            *[enrich_from_openalex(session, t) for t in titles]
-        )
         # 提取 title + authors
-    def get_val(note, key):
-        v = note.get("content", {}).get(key)
-        return v.get("value") if isinstance(v, dict) else v
-
-    enriched = await asyncio.gather(
-        *[
-            enrich_from_openalex(
-                session,
-                get_val(n, "title") or "",
-                get_val(n, "authors") or [],
-                year,
-            )
-            for n in notes
-        ]
-    )
+        def get_val(note, key):
+            v = note.get("content", {}).get(key)
+            return v.get("value") if isinstance(v, dict) else v
+        enriched = await asyncio.gather(
+            *[
+                enrich_from_openalex(
+                    session,
+                    get_val(n, "title") or "",
+                    get_val(n, "authors") or [],
+                    year,
+                )
+                for n in notes
+            ]
+        )
         for n, meta in zip(notes, enriched):
             items.append(build_item_openreview(n, short_name, ccf_level, meta))
-
         newest_cdate = max(n.get("cdate", 0) for n in notes)
         if newest_cdate:
             state[state_key] = newest_cdate
