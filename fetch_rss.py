@@ -4,6 +4,7 @@ import os
 import random
 import re
 import time
+import difflib
 import xml.sax.saxutils as saxutils
 from collections import Counter
 from datetime import datetime
@@ -94,6 +95,14 @@ CONFERENCES = [
     ("The Web Conference", "WWW", "CCF A", "openalex", "The Web Conference"),
     ("IEEE Real-Time Systems Symposium", "RTSS", "CCF A", "ieee", "IEEE Real-Time Systems Symposium"),
 ]
+# ============ OpenReview venue id 映射 ============
+OPENREVIEW_VENUE_IDS = {
+    "NeurIPS": "NeurIPS.cc/{year}/Conference",
+    "ICML": "ICML.cc/{year}/Conference",
+    "ICLR": "ICLR.cc/{year}/Conference",
+    "AAAI": "AAAI.cc/{year}/Conference",
+    "ACL": "aclweb.org/ACL/{year}/Conference",
+}
 STOPWORDS = set(
     "a about above after again against all am an and any are aren't as at be because been before being below between both but by can can't cannot could couldn't did didn't do does doesn't doing don't down during each few for from further had hadn't has hasn't have haven't having he he'd he'll he's her here here's hers herself him himself his how how's i i'd i'll i'm i've if in into is isn't it it's its itself let's me more most mustn't my myself no nor not of off on once only or other ought our ours ourselves out over own same shan't she she'd she'll she's should shouldn't so some such than that that's the their theirs them themselves then there there's these they they'd they'll they're they've this those through to too under until up very was wasn't we we'd we'll we're we've were weren't what what's when when's where where's which while who who's whom why why's with won't would wouldn't you you'd you'll you're you've your yours yourself yourselves".split()
 )
@@ -201,7 +210,7 @@ async def resolve_source_id(session, search_name, full_name,cache):
         except Exception as e:
             print(f"    解析 source 失败 {query}: {e}", flush=True)
     
-    print(f"    ⚠️ 无法解析 source: {search_name}，尝试 display_name 过滤", flush=True)
+    print(f"无法解析 source: {search_name}，尝试 display_name 过滤", flush=True)
     return None
 
 
@@ -306,18 +315,21 @@ async def fetch_ieee_works(session, search_name, year, state, state_key):
             "sort_field": "publication_date",
             "sort_order": "desc",
         }
+        consumed = False
         try:
             async with session.get(
                 "https://ieeexploreapi.ieee.org/api/v1/search/articles",
                 params=params, timeout=30
             ) as resp:
                 _ieee_consume_quota(state, 1)
+                consumed = True
                 if resp.status != 200:
                     print(f"    IEEE HTTP {resp.status}", flush=True)
                     break
                 data = await resp.json()
         except Exception as e:
-            _ieee_consume_quota(state, 1)
+            if not consumed:
+                _ieee_consume_quota(state, 1)
             print(f"    IEEE 失败: {e}", flush=True)
             break
 
@@ -367,6 +379,7 @@ async def fetch_openreview_notes(session, venue_id, year, last_cdate=None):
     venue_id 形如 'NeurIPS.cc/2026/Conference'。
     只返回今年（根据 cdate 年份过滤）且 cdate > last_cdate 的 note。
     """
+   
     all_notes = []
     offset = 0
     limit = 1000
@@ -412,11 +425,29 @@ async def fetch_openreview_notes(session, venue_id, year, last_cdate=None):
         await asyncio.sleep(random.uniform(1.0, 2.0))
 
     return all_notes
+def _norm_title(t):
+    """标准化标题：小写、去标点、压缩空格"""
+    t = (t or "").lower()
+    t = re.sub(r"[^\w\s]", " ", t)   # 去标点
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
 
-async def enrich_from_openalex(session, title):
+def _title_similarity(a, b):
+    return difflib.SequenceMatcher(None, _norm_title(a), _norm_title(b)).ratio()
+    
+async def enrich_from_openalex(session, title,authors=None, year=None):
     """用标题去 OpenAlex 查元数据，补全 DOI / venue 全称 / 发表日期。"""
+    if not title:
+        return {}
     async with SEMAPHORE:
-        params = {"search": title, "per-page": 1, "mailto": EMAIL}
+       filter_parts = [f"title.search:{title}"]
+        if year:
+            filter_parts.append(f"publication_year:{year}")
+        params = {
+            "filter": ",".join(filter_parts),
+            "per-page": 5,
+            "mailto": EMAIL,
+        }
         try:
             async with session.get("https://api.openalex.org/works", params=params, timeout=15) as resp:
                 if resp.status != 200:
@@ -425,25 +456,33 @@ async def enrich_from_openalex(session, title):
                 results = data.get("results", [])
                 if not results:
                     return {}
-                w = results[0]
-                # 标题相似度粗筛，避免匹配错论文
-                found_title = (w.get("title") or "").lower().strip()
-                query_title = title.lower().strip()
-                # 简单判断：前 30 个字符匹配即认为命中
-                if query_title[:30] not in found_title and found_title[:30] not in query_title:
-                    return {}
-                venue = (w.get("primary_location") or {}).get("source", {}) or {}
-                return {
-                    "doi": w.get("doi") or "",
-                    "venue_name": venue.get("display_name", ""),
-                    "publication_date": w.get("publication_date") or "",
-                    "cited_by_count": w.get("cited_by_count", 0),
-                }
+                # 遍历候选，选择第一个通过双重校验的
+                for w in results:
+                    found_title = w.get("title") or ""
+                    sim = _title_similarity(title, found_title)
+                    if sim < 0.92:
+                        continue
+                    
+                    # 有作者信息时做二次确认
+                    if authors:
+                        if not _author_match(authors, w.get("authorships", [])):
+                            continue
+                    
+                    venue = (w.get("primary_location") or {}).get("source", {}) or {}
+                    return {
+                        "doi": w.get("doi") or "",
+                        "venue_name": venue.get("display_name", ""),
+                        "publication_date": w.get("publication_date") or "",
+                        "cited_by_count": w.get("cited_by_count", 0),
+                    }
+                    
+                    # 所有候选都不满足阈值 → 放弃
+                return {}            
         except Exception:
             return {}
             
 # ============ 构建 RSS item ============
-def build_item_openalex(w, short_name, ccf_level):
+def build_item_openalex(w, short_name, ccf_level,full_name=""):
     title = saxutils.escape(w.get("title") or "无标题")
     doi = w.get("doi") or ""
     link = doi if doi else (w.get("id") or "")
@@ -453,7 +492,7 @@ def build_item_openalex(w, short_name, ccf_level):
     )
     pub_date_str = w.get("publication_date") or ""
     venue = (w.get("primary_location") or {}).get("source", {}) or {}
-    venue_name = venue.get("display_name", "")
+    venue_name = venue.get("display_name", "")or full_name
     abstract = reconstruct_abstract(w.get("abstract_inverted_index"))
 
     try:
@@ -575,21 +614,22 @@ def build_item_openreview(note, short_name, ccf_level, enrich=None):
     )
 
 
-async def process_one(session, search_name, short_name, ccf_level, source_type, items, year, state, source_cache):
+async def process_one(session, search_name, short_name, ccf_level, source_type, items, year, state, source_cache, full_name):
     state_key = f"{source_type}:{search_name}"
     last_val = state.get(state_key)
 
     if source_type == "openalex":
-        sid = await resolve_source_id(session, search_name, source_cache)
+        sid = await resolve_source_id(session, search_name, full_name,source_cache)
         if not sid:
-            print(f"  无法解析 source，跳过 {short_name}", flush=True)
-            return False
-        works = await fetch_openalex_works(session, sid, year, last_val)
+            print(f"  无法解析 source，跳过 {full_name}", flush=True)
+            works = await fetch_openalex_works(session, None, year, last_val, fallback_search=full_name)
+        else:
+            works = await fetch_openalex_works(session, sid, year, last_val)
         if not works:
             print(f"  {short_name} 无新增", flush=True)
             return True
         for w in works:
-            items.append(build_item_openalex(w, short_name, ccf_level))
+            items.append(build_item_openalex(w, short_name, ccf_level,full_name))
         newest = max((w.get("publication_date") or "") for w in works)
         if newest:
             state[state_key] = newest
@@ -614,10 +654,8 @@ async def process_one(session, search_name, short_name, ccf_level, source_type, 
 
     elif source_type == "openreview":
         # search_name 是会议简称，构造 venue_id
-        venue_id = f"{search_name}.cc/{year}/Conference"
-        # 兼容 ACL 等特殊格式
-        if search_name == "ACL":
-            venue_id = f"ACL.cc/{year}/Conference"
+        template = OPENREVIEW_VENUE_IDS.get(search_name, f"{search_name}.cc/{{year}}/Conference")
+        venue_id = template.format(year=year)       
         notes = await fetch_openreview_notes(session, venue_id, year, last_val)
         if not notes:
             print(f"  {short_name} 无新增", flush=True)
@@ -632,6 +670,22 @@ async def process_one(session, search_name, short_name, ccf_level, source_type, 
         enriched = await asyncio.gather(
             *[enrich_from_openalex(session, t) for t in titles]
         )
+        # 提取 title + authors
+    def get_val(note, key):
+        v = note.get("content", {}).get(key)
+        return v.get("value") if isinstance(v, dict) else v
+
+    enriched = await asyncio.gather(
+        *[
+            enrich_from_openalex(
+                session,
+                get_val(n, "title") or "",
+                get_val(n, "authors") or [],
+                year,
+            )
+            for n in notes
+        ]
+    )
         for n, meta in zip(notes, enriched):
             items.append(build_item_openreview(n, short_name, ccf_level, meta))
 
@@ -652,7 +706,7 @@ async def main():
     failed = []
 
     async with aiohttp.ClientSession() as session:
-        for idx, (search_name, short_name, ccf_level, source_type，full_name) in enumerate(CONFERENCES, 1):
+        for idx, (search_name, short_name, ccf_level, source_type,full_name) in enumerate(CONFERENCES, 1):
             print(f"[{idx}/{len(CONFERENCES)}] {short_name} ({source_type}) ...", flush=True)
             try:
                 ok = await process_one(session, search_name, short_name, ccf_level,
