@@ -54,7 +54,12 @@ STOPWORDS = set(
 
 WORD_REGEX = re.compile(r"[a-zA-Z0-9]+")
 EMAIL = "1941870298@qq.com"
-PAGE_SIZE = 200          # 每页条数，避免单次响应过大
+
+PAGE_SIZE = 100          # DBLP 单页上限就是 100，必须为 100 才能翻页
+MAX_PAGES = 30           # 每个会议最多翻 30 页 = 3000 条，防死循环
+RETRY_ROUNDS = 2         # 失败会议额外重试轮数
+RETRY_WAIT_MIN = 30      # 每轮重试前等待的分钟数
+
 OPENALEX_CONCURRENCY = 20
 SEMAPHORE = asyncio.Semaphore(OPENALEX_CONCURRENCY)
 
@@ -116,7 +121,8 @@ async def fetch_all_hits(page, streamid):
     """分页抓取该 stream 的全部 hits，直到无更多数据。"""
     all_hits = []
     f = 0
-    while True:
+    page_no = 1
+    for _ in range(MAX_PAGES):
         q = quote(streamid, safe='')
         url = (
             f"https://dblp.org/search/publ/api?q={q}"
@@ -132,14 +138,16 @@ async def fetch_all_hits(page, streamid):
             break
 
         all_hits.extend(hits)
+        print(f"    第 {page_no} 页 {len(hits)} 条（累计 {len(all_hits)}）", flush=True)
 
         # 如果返回不足一页，说明到底了
         if len(hits) < PAGE_SIZE:
             break
 
         f += PAGE_SIZE
+        page_no += 1
         # 页间随机停顿，降低 Anubis 触发概率
-        await page.wait_for_timeout(int(random.uniform(2000, 5000)))
+        await page.wait_for_timeout(int(random.uniform(3000, 7000)))
 
     return all_hits
 
@@ -198,6 +206,45 @@ def build_item(hit, short_name, ccf_level, abstract):
     )
 
 
+async def process_one(page, session, streamid, short_name, ccf_level, items, min_year):
+    """处理单个会议，成功返回 True，抓取失败返回 False。"""
+    hits = await fetch_all_hits(page, streamid)
+    if not hits:
+        return False
+
+    # 黑名单过滤（SWC 等已知误匹配）
+    before = len(hits)
+    hits = [
+        h for h in hits
+        if not h.get("info", {}).get("key", "").startswith(BLACKLIST_PREFIXES)
+    ]
+
+    # 年份过滤：只保留今年 + 去年
+    hits = [
+        h for h in hits
+        if int(h.get("info", {}).get("year", 0) or 0) >= min_year
+    ]
+
+    if before != len(hits):
+        print(f"  过滤掉 {before - len(hits)} 条（SWC 或早于 {min_year} 年）", flush=True)
+
+    if not hits:
+        print(f"  {short_name} 过滤后无结果", flush=True)
+        return True  # 抓取成功，只是过滤后为空
+
+    titles = [clean_title(h.get("info", {})) for h in hits]
+    dois = [h.get("info", {}).get("doi", "") for h in hits]
+    abstracts = await asyncio.gather(
+        *[fetch_abstract(session, t, d) for t, d in zip(titles, dois)]
+    )
+
+    for hit, abstract in zip(hits, abstracts):
+        items.append(build_item(hit, short_name, ccf_level, abstract))
+
+    print(f"  {short_name} 完成，{len(hits)} 篇", flush=True)
+    return True
+
+
 async def main():
     current_year = datetime.now().year
     min_year = current_year - 1  # 近似 365 天：今年 + 去年
@@ -213,48 +260,43 @@ async def main():
         page = await context.new_page()
 
         items = []
+        failed = []
         async with aiohttp.ClientSession() as session:
+            # ===== 第 1 轮：全量抓取 =====
             for idx, (streamid, short_name, ccf_level) in enumerate(CONFERENCES, 1):
                 print(f"[{idx}/{len(CONFERENCES)}] 抓取 {short_name} ...", flush=True)
-
-                hits = await fetch_all_hits(page, streamid)
-                if not hits:
+                ok = await process_one(page, session, streamid, short_name, ccf_level, items, min_year)
+                if not ok:
                     print(f"  跳过 {short_name}", flush=True)
-                    continue
-
-                # 黑名单过滤（SWC 等已知误匹配）
-                before = len(hits)
-                hits = [
-                    h for h in hits
-                    if not h.get("info", {}).get("key", "").startswith(BLACKLIST_PREFIXES)
-                ]
-
-                # 年份过滤：只保留今年 + 去年
-                hits = [
-                    h for h in hits
-                    if int(h.get("info", {}).get("year", 0) or 0) >= min_year
-                ]
-
-                if before != len(hits):
-                    print(f"  过滤掉 {before - len(hits)} 条（SWC 或早于 {min_year} 年）", flush=True)
-
-                if not hits:
-                    print(f"  {short_name} 过滤后无结果", flush=True)
-                    continue
-
-                titles = [clean_title(h.get("info", {})) for h in hits]
-                dois = [h.get("info", {}).get("doi", "") for h in hits]
-                abstracts = await asyncio.gather(
-                    *[fetch_abstract(session, t, d) for t, d in zip(titles, dois)]
-                )
-
-                for hit, abstract in zip(hits, abstracts):
-                    items.append(build_item(hit, short_name, ccf_level, abstract))
-
-                print(f"  {short_name} 完成，{len(hits)} 篇", flush=True)
-
+                    failed.append((streamid, short_name, ccf_level))
                 # 会议之间随机停顿，降低 Anubis 触发
                 await page.wait_for_timeout(int(random.uniform(4000, 9000)))
+
+            # ===== 延迟重试轮：等待 30 分钟后重试失败的会议 =====
+            for retry_round in range(1, RETRY_ROUNDS + 1):
+                if not failed:
+                    break
+                print(
+                    f"=== 第 {retry_round} 轮重试：等待 {RETRY_WAIT_MIN} 分钟后处理 "
+                    f"{len(failed)} 个失败会议 ===",
+                    flush=True,
+                )
+                await page.wait_for_timeout(RETRY_WAIT_MIN * 60 * 1000)
+
+                still_failed = []
+                for streamid, short_name, ccf_level in failed:
+                    print(f"  [重试{retry_round}] 抓取 {short_name} ...", flush=True)
+                    ok = await process_one(page, session, streamid, short_name, ccf_level, items, min_year)
+                    if not ok:
+                        print(f"    仍然跳过 {short_name}", flush=True)
+                        still_failed.append((streamid, short_name, ccf_level))
+                    await page.wait_for_timeout(int(random.uniform(4000, 9000)))
+
+                failed = still_failed
+                print(f"  第 {retry_round} 轮后仍失败 {len(failed)} 个：{[c[1] for c in failed]}", flush=True)
+
+            if failed:
+                print(f"最终仍未抓取：{[c[1] for c in failed]}", flush=True)
 
         await browser.close()
 
