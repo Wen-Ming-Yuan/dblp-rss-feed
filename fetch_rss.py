@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import random
 import re
 import time
@@ -7,46 +8,53 @@ import xml.sax.saxutils as saxutils
 from collections import Counter
 from datetime import datetime
 from email.utils import formatdate
-from urllib.parse import quote
 
 import aiohttp
-from playwright.async_api import async_playwright
 
+# ============ 配置 ============
+# (OpenAlex搜索名 或 IEEE publication_title, 短名, CCF等级, 数据源类型)
+# source_type: "openalex" | "ieee"
 CONFERENCES = [
-    ("streamid:conf/ppopp:", "PPoPP", "CCF A"), ("streamid:conf/fast:", "FAST", "CCF A"),
-    ("streamid:conf/dac:", "DAC", "CCF A"), ("streamid:conf/hpca:", "HPCA", "CCF A"),
-    ("streamid:conf/micro:", "MICRO", "CCF A"), ("streamid:conf/sc:", "SC", "CCF A"),
-    ("streamid:conf/asplos:", "ASPLOS", "CCF A"), ("streamid:conf/isca:", "ISCA", "CCF A"),
-    ("streamid:conf/atc:", "USENIX ATC", "CCF A"), ("streamid:conf/eurosys:", "EuroSys", "CCF A"),
-    ("streamid:conf/hpdc:", "HPDC", "CCF A"),
-    ("streamid:conf/sigcomm:", "SIGCOMM", "CCF A"), ("streamid:conf/mobicom:", "MobiCom", "CCF A"),
-    ("streamid:conf/infocom:", "INFOCOM", "CCF A"), ("streamid:conf/nsdi:", "NSDI", "CCF A"),
-    ("streamid:conf/ccs:", "CCS", "CCF A"), ("streamid:conf/eurocrypt:", "EUROCRYPT", "CCF A"),
-    ("streamid:conf/sp:", "S&P", "CCF A"), ("streamid:conf/crypto:", "CRYPTO", "CCF A"),
-    ("streamid:conf/uss:", "USENIX Security", "CCF A"), ("streamid:conf/ndss:", "NDSS", "CCF A"),
-    ("streamid:conf/pldi:", "PLDI", "CCF A"), ("streamid:conf/popl:", "POPL", "CCF A"),
-    ("streamid:conf/sigsoft:", "FSE", "CCF A"), ("streamid:conf/sosp:", "SOSP", "CCF A"),
-    ("streamid:conf/oopsla:", "OOPSLA", "CCF A"), ("streamid:conf/kbse:", "ASE", "CCF A"),
-    ("streamid:conf/icse:", "ICSE", "CCF A"), ("streamid:conf/issta:", "ISSTA", "CCF A"),
-    ("streamid:conf/osdi:", "OSDI", "CCF A"), ("streamid:conf/fm:", "FM", "CCF A"),
-    ("streamid:conf/sigmod:", "SIGMOD", "CCF A"), ("streamid:conf/kdd:", "KDD", "CCF A"),
-    ("streamid:conf/icde:", "ICDE", "CCF A"), ("streamid:conf/sigir:", "SIGIR", "CCF A"),
-    ("streamid:conf/vldb:", "VLDB", "CCF A"),
-    ("streamid:conf/stoc:", "STOC", "CCF A"), ("streamid:conf/soda:", "SODA", "CCF A"),
-    ("streamid:conf/cav:", "CAV", "CCF A"), ("streamid:conf/focs:", "FOCS", "CCF A"),
-    ("streamid:conf/lics:", "LICS", "CCF A"),
-    ("streamid:conf/mm:", "ACM MM", "CCF A"), ("streamid:conf/siggraph:", "SIGGRAPH", "CCF A"),
-    ("streamid:conf/vr:", "VR", "CCF A"), ("streamid:conf/visualization:", "IEEE VIS", "CCF A"),
-    ("streamid:conf/aaai:", "AAAI", "CCF A"), ("streamid:conf/nips:", "NeurIPS", "CCF A"),
-    ("streamid:conf/acl:", "ACL", "CCF A"), ("streamid:conf/cvpr:", "CVPR", "CCF A"),
-    ("streamid:conf/iccv:", "ICCV", "CCF A"), ("streamid:conf/icml:", "ICML", "CCF A"),
-    ("streamid:conf/iclr:", "ICLR", "CCF A"),
-    ("streamid:conf/cscw:", "CSCW", "CCF A"), ("streamid:conf/chi:", "CHI", "CCF A"),
-    ("streamid:conf/huc:", "UbiComp", "CCF A"), ("streamid:conf/uist:", "UIST", "CCF A"),
-    ("streamid:conf/www:", "WWW", "CCF A"), ("streamid:conf/rtss:", "RTSS", "CCF A"),
+    ("PPoPP", "PPoPP", "CCF A", "openalex"),
+    ("USENIX Annual Technical Conference", "USENIX ATC", "CCF A", "openalex"),
+    ("EuroSys", "EuroSys", "CCF A", "openalex"),
+    ("SIGCOMM", "SIGCOMM", "CCF A", "openalex"),
+    ("MobiCom", "MobiCom", "CCF A", "openalex"),
+    ("IEEE INFOCOM", "INFOCOM", "CCF A", "ieee"),
+    ("USENIX Symposium on Networked Systems Design and Implementation", "NSDI", "CCF A", "openalex"),
+    ("ACM Conference on Computer and Communications Security", "CCS", "CCF A", "openalex"),
+    ("IEEE Symposium on Security and Privacy", "S&P", "CCF A", "ieee"),
+    ("USENIX Security Symposium", "USENIX Security", "CCF A", "openalex"),
+    ("Network and Distributed System Security Symposium", "NDSS", "CCF A", "openalex"),
+    ("PLDI", "PLDI", "CCF A", "openalex"),
+    ("POPL", "POPL", "CCF A", "openalex"),
+    ("SOSP", "SOSP", "CCF A", "openalex"),
+    ("ICSE", "ICSE", "CCF A", "openalex"),
+    ("OSDI", "OSDI", "CCF A", "openalex"),
+    ("SIGMOD", "SIGMOD", "CCF A", "openalex"),
+    ("KDD", "KDD", "CCF A", "openalex"),
+    ("ICDE", "ICDE", "CCF A", "ieee"),
+    ("SIGIR", "SIGIR", "CCF A", "openalex"),
+    ("VLDB", "VLDB", "CCF A", "openalex"),
+    ("STOC", "STOC", "CCF A", "openalex"),
+    ("FOCS", "FOCS", "CCF A", "ieee"),
+    ("ACM Multimedia", "ACM MM", "CCF A", "openalex"),
+    ("SIGGRAPH", "SIGGRAPH", "CCF A", "openalex"),
+    ("IEEE Virtual Reality", "VR", "CCF A", "ieee"),
+    ("IEEE Visualization", "IEEE VIS", "CCF A", "ieee"),
+    ("AAAI Conference on Artificial Intelligence", "AAAI", "CCF A", "openalex"),
+    ("Neural Information Processing Systems", "NeurIPS", "CCF A", "openalex"),
+    ("ACL", "ACL", "CCF A", "openalex"),
+    ("CVPR", "CVPR", "CCF A", "ieee"),
+    ("ICCV", "ICCV", "CCF A", "ieee"),
+    ("ICML", "ICML", "CCF A", "openalex"),
+    ("ICLR", "ICLR", "CCF A", "openalex"),
+    ("CHI", "CHI", "CCF A", "openalex"),
+    ("UbiComp", "UbiComp", "CCF A", "openalex"),
+    ("UIST", "UIST", "CCF A", "openalex"),
+    ("The Web Conference", "WWW", "CCF A", "openalex"),
+    ("IEEE Real-Time Systems Symposium", "RTSS", "CCF A", "ieee"),
 ]
-
-BLACKLIST_PREFIXES = ("conf/swc/",)
 
 STOPWORDS = set(
     "a about above after again against all am an and any are aren't as at be because been before being below between both but by can can't cannot could couldn't did didn't do does doesn't doing don't down during each few for from further had hadn't has hasn't have haven't having he he'd he'll he's her here here's hers herself him himself his how how's i i'd i'll i'm i've if in into is isn't it it's its itself let's me more most mustn't my myself no nor not of off on once only or other ought our ours ourselves out over own same shan't she she'd she'll she's should shouldn't so some such than that that's the their theirs them themselves then there there's these they they'd they'll they're they've this those through to too under until up very was wasn't we we'd we'll we're we've were weren't what what's when when's where where's which while who who's whom why why's with won't would wouldn't you you'd you'll you're you've your yours yourself yourselves".split()
@@ -55,26 +63,30 @@ STOPWORDS = set(
 WORD_REGEX = re.compile(r"[a-zA-Z0-9]+")
 EMAIL = "1941870298@qq.com"
 
-PAGE_SIZE = 100          # DBLP 单页上限就是 100，必须为 100 才能翻页
-MAX_PAGES = 30           # 每个会议最多翻 30 页 = 3000 条，防死循环
-RETRY_ROUNDS = 2         # 失败会议额外重试轮数
-RETRY_WAIT_MIN = 30      # 每轮重试前等待的分钟数
-
+OPENALEX_PER_PAGE = 200
 OPENALEX_CONCURRENCY = 20
 SEMAPHORE = asyncio.Semaphore(OPENALEX_CONCURRENCY)
 
+IEEE_API_KEY = os.environ.get("IEEE_API_KEY", "")
+IEEE_MAX_RECORDS = 200
 
-def parse_authors(authors_info):
-    result = []
-    if isinstance(authors_info, list):
-        for author in authors_info:
-            if isinstance(author, dict):
-                result.append(author.get("text", ""))
-            elif isinstance(author, str):
-                result.append(author)
-    elif isinstance(authors_info, dict):
-        result.append(authors_info.get("text", ""))
-    return ", ".join(filter(None, result))
+STATE_FILE = "state.json"
+SOURCE_CACHE_FILE = "source_cache.json"
+
+
+def load_json(path):
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+
+def save_json(path, data):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 
 def reconstruct_abstract(inverted_index):
@@ -97,115 +109,167 @@ def extract_keywords(text, top_n=8):
     return [w for w, _ in Counter(filtered).most_common(top_n)]
 
 
-async def fetch_dblp_page(page, url):
-    """抓取单页 DBLP JSON，带强重试和随机退避。"""
-    for attempt in range(5):
-        try:
-            resp = await page.goto(url, wait_until="domcontentloaded", timeout=90000)
-            if resp and resp.status == 200:
-                body = await resp.text()
-                if "<html" in body.lower() or "anubis" in body.lower():
-                    wait = 15 + attempt * 10 + random.uniform(0, 8)
-                    print(f"    触发 Anubis，{wait:.0f}s 后重试（第 {attempt + 1}/5 次）", flush=True)
-                    await page.wait_for_timeout(int(wait * 1000))
-                    continue
-                return json.loads(body)
-        except Exception as e:
-            wait = 10 + attempt * 8 + random.uniform(0, 5)
-            print(f"    DBLP 抓取失败（第 {attempt + 1}/5 次）: {e}，{wait:.0f}s 后重试", flush=True)
-            await page.wait_for_timeout(int(wait * 1000))
-    return None
-
-
-async def fetch_all_hits(page, streamid, min_year):
-    """分页抓取该 stream 的全部 hits，直到无更多数据。"""
-    all_hits = []
-    f = 0
-    page_no = 1
-    for _ in range(MAX_PAGES):
-        q = quote(streamid, safe='')
-        url = (
-            f"https://dblp.org/search/publ/api?q={q}"
-            f"&h={PAGE_SIZE}&f={f}&format=json"
-        )
-        data = await fetch_dblp_page(page, url)
-        if not data:
-            # 某一页失败则终止该会议（已抓到的保留）
-            break
-
-        hits = data.get("result", {}).get("hits", {}).get("hit", [])
-        if not hits:
-            break
-        # 本页只保留目标年份
-        fresh = [
-            h for h in hits
-            if int(h.get("info", {}).get("year", 0) or 0) >= min_year
-        ]
-        all_hits.extend(fresh)
-
-        years = [int(h.get("info", {}).get("year", 0) or 0) for h in hits]
-        newest = max(years) if years else 0
-        print(
-            f"    第 {page_no} 页 {len(hits)} 条（本页 {newest} 年，"
-            f"保留 {len(fresh)}，累计 {len(all_hits)}）",
-            flush=True,
-        )
-        # 关键：本页全部早于目标年份 → 后面只会更旧，停止翻页
-        if fresh == [] and newest < min_year:
-            print(f"    已翻到 {newest} 年，早于 {min_year}，停止翻页", flush=True)
-            break
-        # 如果返回不足一页，说明到底了
-        if len(hits) < PAGE_SIZE:
-            break
-
-        f += PAGE_SIZE
-        page_no += 1
-        # 页间随机停顿，降低 Anubis 触发概率
-        await page.wait_for_timeout(int(random.uniform(3000, 7000)))
-
-    return all_hits
-
-
-async def fetch_abstract(session, title, doi=None):
-    async with SEMAPHORE:
-        params = {"per-page": 1, "mailto": EMAIL}
-        if doi:
-            params["filter"] = f"doi:{doi}"
-        else:
-            params["search"] = title
-        try:
-            async with session.get("https://api.openalex.org/works", params=params, timeout=10) as resp:
-                if resp.status != 200:
-                    return ""
-                data = await resp.json()
-                results = data.get("results", [])
-                if not results:
-                    return ""
-                return reconstruct_abstract(results[0].get("abstract_inverted_index"))
-        except Exception:
-            return ""
-
-
-def clean_title(info):
-    return re.sub(r"<[^>]+>", "", info.get("title", ""))
-
-
-def build_item(hit, short_name, ccf_level, abstract):
-    info = hit.get("info", {})
-    title = saxutils.escape(clean_title(info) or "无标题")
-    link = info.get("ee") or info.get("url", "")
-    authors = parse_authors(info.get("authors", {}).get("author", []))
-    year = info.get("year", "")
+# ============ OpenAlex ============
+async def resolve_source_id(session, search_name, cache):
+    if search_name in cache:
+        return cache[search_name]
+    params = {"search": search_name, "per-page": 5, "mailto": EMAIL}
     try:
-        pub_date = formatdate(time.mktime(time.strptime(f"{year}-01-01", "%Y-%m-%d")), usegmt=True) if year else formatdate(time.time(), usegmt=True)
+        async with session.get("https://api.openalex.org/sources", params=params, timeout=20) as resp:
+            if resp.status != 200:
+                return None
+            data = await resp.json()
+            results = data.get("results", [])
+            if not results:
+                return None
+            sid = results[0]["id"]
+            cache[search_name] = sid
+            print(f"    解析 source: {search_name} -> {sid} ({results[0].get('display_name')})", flush=True)
+            return sid
+    except Exception as e:
+        print(f"    解析 source 失败 {search_name}: {e}", flush=True)
+        return None
+
+
+async def fetch_openalex_works(session, source_id, year, last_date=None):
+    all_works = []
+    cursor = "*"
+    page_no = 0
+    while True:
+        params = {
+            "filter": f"primary_location.source.id:{source_id},publication_year:{year}",
+            "per-page": OPENALEX_PER_PAGE,
+            "cursor": cursor,
+            "mailto": EMAIL,
+        }
+        try:
+            async with session.get("https://api.openalex.org/works", params=params, timeout=30) as resp:
+                if resp.status != 200:
+                    print(f"    OpenAlex HTTP {resp.status}", flush=True)
+                    break
+                data = await resp.json()
+        except Exception as e:
+            print(f"    OpenAlex 失败: {e}", flush=True)
+            break
+
+        results = data.get("results", [])
+        if not results:
+            break
+
+        stop = False
+        if last_date:
+            fresh = []
+            for w in results:
+                pub_date = w.get("publication_date") or ""
+                if pub_date <= last_date:
+                    stop = True
+                    break
+                fresh.append(w)
+            all_works.extend(fresh)
+        else:
+            all_works.extend(results)
+
+        page_no += 1
+        print(f"    第 {page_no} 页 {len(results)} 条，累计 {len(all_works)}", flush=True)
+
+        if stop:
+            print(f"    遇到上次最新 ({last_date})，停止", flush=True)
+            break
+
+        cursor = data.get("meta", {}).get("next_cursor")
+        if not cursor:
+            break
+
+        await asyncio.sleep(random.uniform(0.5, 1.5))
+
+    return all_works
+
+
+# ============ IEEE Xplore ============
+async def fetch_ieee_works(session, search_name, year, last_date=None):
+    if not IEEE_API_KEY:
+        print(f"    未配置 IEEE_API_KEY，跳过", flush=True)
+        return []
+
+    all_works = []
+    start = 1
+    total = None
+    while True:
+        params = {
+            "apikey": IEEE_API_KEY,
+            "format": "json",
+            "publication_title": search_name,
+            "start_year": str(year),
+            "end_year": str(year),
+            "start_record": str(start),
+            "maximum_records": str(IEEE_MAX_RECORDS),
+            "sort_field": "publication_date",
+            "sort_order": "desc",
+        }
+        try:
+            async with session.get("https://ieeexploreapi.ieee.org/api/v1/search/articles",
+                                   params=params, timeout=30) as resp:
+                if resp.status != 200:
+                    print(f"    IEEE HTTP {resp.status}", flush=True)
+                    break
+                data = await resp.json()
+        except Exception as e:
+            print(f"    IEEE 失败: {e}", flush=True)
+            break
+
+        articles = data.get("articles", [])
+        total = data.get("total_records", 0)
+        if not articles:
+            break
+
+        stop = False
+        if last_date:
+            fresh = []
+            for a in articles:
+                pub_date = a.get("publication_date") or ""
+                if pub_date <= last_date:
+                    stop = True
+                    break
+                fresh.append(a)
+            all_works.extend(fresh)
+        else:
+            all_works.extend(articles)
+
+        print(f"    IEEE 第 {start}-{start+len(articles)-1}/{total} 条，累计 {len(all_works)}", flush=True)
+
+        if stop or start + len(articles) > total:
+            break
+        start += IEEE_MAX_RECORDS
+        await asyncio.sleep(random.uniform(0.5, 1.5))
+
+    return all_works
+
+
+# ============ 构建 RSS item ============
+def build_item_openalex(w, short_name, ccf_level):
+    title = saxutils.escape(w.get("title") or "无标题")
+    doi = w.get("doi") or ""
+    link = doi if doi else (w.get("id") or "")
+    authors = ", ".join(
+        a.get("author", {}).get("display_name", "")
+        for a in w.get("authorships", [])
+    )
+    pub_date_str = w.get("publication_date") or ""
+    venue = (w.get("primary_location") or {}).get("source", {}) or {}
+    venue_name = venue.get("display_name", "")
+    abstract = reconstruct_abstract(w.get("abstract_inverted_index"))
+
+    try:
+        pub_date = formatdate(time.mktime(time.strptime(pub_date_str, "%Y-%m-%d")), usegmt=True) if pub_date_str else formatdate(time.time(), usegmt=True)
     except Exception:
         pub_date = formatdate(time.time(), usegmt=True)
 
-    keywords = ", ".join(extract_keywords(abstract or title))
+    keywords = ", ".join(extract_keywords(abstract or w.get("title", "")))
     description = (
         f"会议: {saxutils.escape(short_name)} ({ccf_level})<br/>"
+        f"期刊/会议全称: {saxutils.escape(venue_name)}<br/>"
         f"作者: {saxutils.escape(authors)}<br/>"
-        f"年份: {saxutils.escape(str(year))}<br/>"
+        f"发表日期: {saxutils.escape(pub_date_str)}<br/>"
         f"关键词: {saxutils.escape(keywords)}<br/>"
         f"摘要: {saxutils.escape(abstract)}<br/>"
         f"链接: <a href=\"{saxutils.escape(link)}\">{saxutils.escape(link)}</a>"
@@ -220,106 +284,114 @@ def build_item(hit, short_name, ccf_level, abstract):
     )
 
 
-async def process_one(page, session, streamid, short_name, ccf_level, items, min_year):
-    """处理单个会议，成功返回 True，抓取失败返回 False。"""
-    hits = await fetch_all_hits(page, streamid, min_year)
-    if not hits:
-        return False
+def build_item_ieee(a, short_name, ccf_level):
+    title = saxutils.escape(a.get("title") or "无标题")
+    link = a.get("html_url") or a.get("abstract_url") or ""
+    authors = a.get("authors", {}).get("authors", [])
+    authors_str = ", ".join(x.get("full_name", "") for x in authors)
+    pub_date_str = a.get("publication_date") or ""
+    venue_name = a.get("publication_title", "")
+    abstract = a.get("abstract") or ""
+    doi = a.get("doi") or ""
 
-    # 黑名单过滤（SWC 等已知误匹配）
-    before = len(hits)
-    hits = [
-        h for h in hits
-        if not h.get("info", {}).get("key", "").startswith(BLACKLIST_PREFIXES)
-    ]   
-    if before != len(hits):
-        print(f"  过滤掉 {before - len(hits)} 条（SWC 或早于 {min_year} 年）", flush=True)
+    try:
+        pub_date = formatdate(time.mktime(time.strptime(pub_date_str, "%Y-%m-%d")), usegmt=True) if pub_date_str else formatdate(time.time(), usegmt=True)
+    except Exception:
+        pub_date = formatdate(time.time(), usegmt=True)
 
-    if not hits:
-        print(f"  {short_name} 过滤后无结果", flush=True)
-        return True  # 抓取成功，只是过滤后为空
-
-    titles = [clean_title(h.get("info", {})) for h in hits]
-    dois = [h.get("info", {}).get("doi", "") for h in hits]
-    abstracts = await asyncio.gather(
-        *[fetch_abstract(session, t, d) for t, d in zip(titles, dois)]
+    keywords = ", ".join(extract_keywords(abstract or a.get("title", "")))
+    description = (
+        f"会议: {saxutils.escape(short_name)} ({ccf_level})<br/>"
+        f"期刊/会议全称: {saxutils.escape(venue_name)}<br/>"
+        f"作者: {saxutils.escape(authors_str)}<br/>"
+        f"发表日期: {saxutils.escape(pub_date_str)}<br/>"
+        f"DOI: {saxutils.escape(doi)}<br/>"
+        f"关键词: {saxutils.escape(keywords)}<br/>"
+        f"摘要: {saxutils.escape(abstract)}<br/>"
+        f"链接: <a href=\"{saxutils.escape(link)}\">{saxutils.escape(link)}</a>"
+    )
+    return (
+        "<item>"
+        f"<title>{title}</title>"
+        f"<link>{saxutils.escape(link)}</link>"
+        f"<description><![CDATA[{description}]]></description>"
+        f"<pubDate>{pub_date}</pubDate>"
+        "</item>"
     )
 
-    for hit, abstract in zip(hits, abstracts):
-        items.append(build_item(hit, short_name, ccf_level, abstract))
 
-    print(f"  {short_name} 完成，{len(hits)} 篇", flush=True)
+async def process_one(session, search_name, short_name, ccf_level, source_type, items, year, state, source_cache):
+    state_key = f"{source_type}:{search_name}"
+    last_date = state.get(state_key)
+
+    if source_type == "openalex":
+        sid = await resolve_source_id(session, search_name, source_cache)
+        if not sid:
+            print(f"  无法解析 source，跳过 {short_name}", flush=True)
+            return False
+        works = await fetch_openalex_works(session, sid, year, last_date)
+        if not works:
+            print(f"  {short_name} 无新增", flush=True)
+            return True
+        for w in works:
+            items.append(build_item_openalex(w, short_name, ccf_level))
+        newest = max((w.get("publication_date") or "") for w in works)
+        if newest:
+            state[state_key] = newest
+        print(f"  {short_name} 完成，{len(works)} 篇（新增）", flush=True)
+
+    elif source_type == "ieee":
+        articles = await fetch_ieee_works(session, search_name, year, last_date)
+        if not articles:
+            print(f"  {short_name} 无新增", flush=True)
+            return True
+        for a in articles:
+            items.append(build_item_ieee(a, short_name, ccf_level))
+        newest = max((a.get("publication_date") or "") for a in articles)
+        if newest:
+            state[state_key] = newest
+        print(f"  {short_name} 完成，{len(articles)} 篇（新增）", flush=True)
+
     return True
 
 
 async def main():
-    current_year = datetime.now().year
-    min_year = current_year - 1  # 近似 365 天：今年 + 去年
+    year = datetime.now().year
+    state = load_json(STATE_FILE)
+    source_cache = load_json(SOURCE_CACHE_FILE)
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=True,
-            args=["--disable-blink-features=AutomationControlled", "--disable-dev-shm-usage"]
-        )
-        context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        )
-        page = await context.new_page()
+    items = []
+    failed = []
 
-        items = []
-        failed = []
-        async with aiohttp.ClientSession() as session:
-            # ===== 第 1 轮：全量抓取 =====
-            for idx, (streamid, short_name, ccf_level) in enumerate(CONFERENCES, 1):
-                print(f"[{idx}/{len(CONFERENCES)}] 抓取 {short_name} ...", flush=True)
-                ok = await process_one(page, session, streamid, short_name, ccf_level, items, min_year)
-                if not ok:
-                    print(f"  跳过 {short_name}", flush=True)
-                    failed.append((streamid, short_name, ccf_level))
-                # 会议之间随机停顿，降低 Anubis 触发
-                await page.wait_for_timeout(int(random.uniform(4000, 9000)))
+    async with aiohttp.ClientSession() as session:
+        for idx, (search_name, short_name, ccf_level, source_type) in enumerate(CONFERENCES, 1):
+            print(f"[{idx}/{len(CONFERENCES)}] {short_name} ({source_type}) ...", flush=True)
+            try:
+                ok = await process_one(session, search_name, short_name, ccf_level,
+                                       source_type, items, year, state, source_cache)
+            except Exception as e:
+                print(f"  异常: {e}", flush=True)
+                ok = False
+            if not ok:
+                failed.append((search_name, short_name, ccf_level, source_type))
+            await asyncio.sleep(random.uniform(1.5, 3.5))
 
-            # ===== 延迟重试轮：等待 30 分钟后重试失败的会议 =====
-            for retry_round in range(1, RETRY_ROUNDS + 1):
-                if not failed:
-                    break
-                print(
-                    f"=== 第 {retry_round} 轮重试：等待 {RETRY_WAIT_MIN} 分钟后处理 "
-                    f"{len(failed)} 个失败会议 ===",
-                    flush=True,
-                )
-                await page.wait_for_timeout(RETRY_WAIT_MIN * 60 * 1000)
-
-                still_failed = []
-                for streamid, short_name, ccf_level in failed:
-                    print(f"  [重试{retry_round}] 抓取 {short_name} ...", flush=True)
-                    ok = await process_one(page, session, streamid, short_name, ccf_level, items, min_year)
-                    if not ok:
-                        print(f"    仍然跳过 {short_name}", flush=True)
-                        still_failed.append((streamid, short_name, ccf_level))
-                    await page.wait_for_timeout(int(random.uniform(4000, 9000)))
-
-                failed = still_failed
-                print(f"  第 {retry_round} 轮后仍失败 {len(failed)} 个：{[c[1] for c in failed]}", flush=True)
-
-            if failed:
-                print(f"最终仍未抓取：{[c[1] for c in failed]}", flush=True)
-
-        await browser.close()
+    save_json(STATE_FILE, state)
+    save_json(SOURCE_CACHE_FILE, source_cache)
 
     rss = f"""<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
 <channel>
-<title>CCF A类会议 Feed</title>
+<title>CCF A类会议 Feed (OpenAlex + IEEE)</title>
 <link>https://github.com/Wen-Ming-Yuan/dblp-rss-feed</link>
-<description>自动生成的 DBLP + OpenAlex 会议 RSS 源</description>
+<description>直接来自 OpenAlex 与 IEEE Xplore 的会议 RSS</description>
 {''.join(items)}
 </channel>
 </rss>"""
 
     with open("feed.xml", "w", encoding="utf-8") as f:
         f.write(rss)
-    print(f"成功生成 feed.xml，共 {len(items)} 条记录", flush=True)
+    print(f"生成 feed.xml，共 {len(items)} 条记录；失败 {len(failed)} 个：{[c[1] for c in failed]}", flush=True)
 
 
 if __name__ == "__main__":
