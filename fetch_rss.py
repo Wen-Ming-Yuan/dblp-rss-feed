@@ -470,7 +470,7 @@ def build_item_ieee(a, short_name, ccf_level):
     )
 
 
-def build_item_openreview(note, short_name, ccf_level,, enrich=None):
+def build_item_openreview(note, short_name, ccf_level, enrich=None):
     enrich = enrich or {}
     content = note.get("content", {})
     # OpenReview v2 的 content 值可能是 {'value': ...} 结构
