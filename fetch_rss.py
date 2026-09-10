@@ -117,7 +117,7 @@ async def fetch_dblp_page(page, url):
     return None
 
 
-async def fetch_all_hits(page, streamid):
+async def fetch_all_hits(page, streamid, min_year):
     """分页抓取该 stream 的全部 hits，直到无更多数据。"""
     all_hits = []
     f = 0
@@ -136,10 +136,24 @@ async def fetch_all_hits(page, streamid):
         hits = data.get("result", {}).get("hits", {}).get("hit", [])
         if not hits:
             break
+        # 本页只保留目标年份
+        fresh = [
+            h for h in hits
+            if int(h.get("info", {}).get("year", 0) or 0) >= min_year
+        ]
+        all_hits.extend(fresh)
 
-        all_hits.extend(hits)
-        print(f"    第 {page_no} 页 {len(hits)} 条（累计 {len(all_hits)}）", flush=True)
-
+        years = [int(h.get("info", {}).get("year", 0) or 0) for h in hits]
+        newest = max(years) if years else 0
+        print(
+            f"    第 {page_no} 页 {len(hits)} 条（本页 {newest} 年，"
+            f"保留 {len(fresh)}，累计 {len(all_hits)}）",
+            flush=True,
+        )
+        # 关键：本页全部早于目标年份 → 后面只会更旧，停止翻页
+        if fresh == [] and newest < min_year:
+            print(f"    已翻到 {newest} 年，早于 {min_year}，停止翻页", flush=True)
+            break
         # 如果返回不足一页，说明到底了
         if len(hits) < PAGE_SIZE:
             break
@@ -217,14 +231,7 @@ async def process_one(page, session, streamid, short_name, ccf_level, items, min
     hits = [
         h for h in hits
         if not h.get("info", {}).get("key", "").startswith(BLACKLIST_PREFIXES)
-    ]
-
-    # 年份过滤：只保留今年 + 去年
-    hits = [
-        h for h in hits
-        if int(h.get("info", {}).get("year", 0) or 0) >= min_year
-    ]
-
+    ]   
     if before != len(hits):
         print(f"  过滤掉 {before - len(hits)} 条（SWC 或早于 {min_year} 年）", flush=True)
 
