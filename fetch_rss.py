@@ -12,8 +12,8 @@ from email.utils import formatdate
 import aiohttp
 
 # ============ 配置 ============
-# (OpenAlex搜索名 或 IEEE publication_title, 短名, CCF等级, 数据源类型)
-# source_type: "openalex" | "ieee"
+# (搜索名, 短名, CCF等级, 数据源类型)
+# source_type: "openalex" | "ieee" | "openreview"
 CONFERENCES = [
     ("PPoPP", "PPoPP", "CCF A", "openalex"),
     ("USENIX Annual Technical Conference", "USENIX ATC", "CCF A", "openalex"),
@@ -42,13 +42,15 @@ CONFERENCES = [
     ("SIGGRAPH", "SIGGRAPH", "CCF A", "openalex"),
     ("IEEE Virtual Reality", "VR", "CCF A", "ieee"),
     ("IEEE Visualization", "IEEE VIS", "CCF A", "ieee"),
-    ("AAAI Conference on Artificial Intelligence", "AAAI", "CCF A", "openalex"),
-    ("Neural Information Processing Systems", "NeurIPS", "CCF A", "openalex"),
-    ("ACL", "ACL", "CCF A", "openalex"),
+    # === AI/ML 会议走 OpenReview ===
+    ("AAAI", "AAAI", "CCF A", "openreview"),
+    ("NeurIPS", "NeurIPS", "CCF A", "openreview"),
+    ("ACL", "ACL", "CCF A", "openreview"),
+    ("ICML", "ICML", "CCF A", "openreview"),
+    ("ICLR", "ICLR", "CCF A", "openreview"),
+    # ==============================
     ("CVPR", "CVPR", "CCF A", "ieee"),
     ("ICCV", "ICCV", "CCF A", "ieee"),
-    ("ICML", "ICML", "CCF A", "openalex"),
-    ("ICLR", "ICLR", "CCF A", "openalex"),
     ("CHI", "CHI", "CCF A", "openalex"),
     ("UbiComp", "UbiComp", "CCF A", "openalex"),
     ("UIST", "UIST", "CCF A", "openalex"),
@@ -245,6 +247,58 @@ async def fetch_ieee_works(session, search_name, year, last_date=None):
     return all_works
 
 
+# ============ OpenReview ============
+async def fetch_openreview_notes(session, venue_id, year, last_cdate=None):
+    """用 OpenReview v2 API 抓取指定 venue 的论文。
+    venue_id 形如 'NeurIPS.cc/2026/Conference'。
+    只返回今年（根据 cdate 年份过滤）且 cdate > last_cdate 的 note。
+    """
+    all_notes = []
+    offset = 0
+    limit = 1000
+    while True:
+        url = "https://api2.openreview.net/notes"
+        params = {
+            "venueid": venue_id,
+            "limit": limit,
+            "offset": offset,
+        }
+        try:
+            async with session.get(url, params=params, timeout=30) as resp:
+                if resp.status != 200:
+                    print(f"    OpenReview HTTP {resp.status}", flush=True)
+                    break
+                data = await resp.json()
+        except Exception as e:
+            print(f"    OpenReview 失败: {e}", flush=True)
+            break
+
+        notes = data.get("notes", [])
+        if not notes:
+            break
+
+        stop = False
+        for note in notes:
+            # note 的 cdate 是毫秒时间戳
+            cdate_ms = note.get("cdate", 0)
+            cdate_dt = datetime.fromtimestamp(cdate_ms / 1000)
+            if cdate_dt.year != year:
+                continue  # 只保留今年
+            if last_cdate and cdate_ms <= last_cdate:
+                stop = True
+                break
+            all_notes.append(note)
+
+        print(f"    OpenReview offset={offset} 取回 {len(notes)} 条，累计 {len(all_notes)}", flush=True)
+
+        if stop or len(notes) < limit:
+            break
+        offset += limit
+        await asyncio.sleep(random.uniform(1.0, 2.0))
+
+    return all_notes
+
+
 # ============ 构建 RSS item ============
 def build_item_openalex(w, short_name, ccf_level):
     title = saxutils.escape(w.get("title") or "无标题")
@@ -320,16 +374,63 @@ def build_item_ieee(a, short_name, ccf_level):
     )
 
 
+def build_item_openreview(note, short_name, ccf_level):
+    content = note.get("content", {})
+    # OpenReview v2 的 content 值可能是 {'value': ...} 结构
+    def get_val(key):
+        v = content.get(key)
+        if isinstance(v, dict):
+            return v.get("value")
+        return v
+
+    title = saxutils.escape(get_val("title") or "无标题")
+    authors_raw = get_val("authors") or []
+    if isinstance(authors_raw, list):
+        authors = ", ".join(authors_raw)
+    else:
+        authors = str(authors_raw)
+    abstract = get_val("abstract") or ""
+    venue_name = get_val("venue") or short_name
+    note_id = note.get("id", "")
+    link = f"https://openreview.net/forum?id={note_id}"
+    cdate_ms = note.get("cdate", 0)
+    try:
+        pub_date = formatdate(cdate_ms / 1000, usegmt=True)
+        pub_date_str = datetime.fromtimestamp(cdate_ms / 1000).strftime("%Y-%m-%d")
+    except Exception:
+        pub_date = formatdate(time.time(), usegmt=True)
+        pub_date_str = ""
+
+    keywords = ", ".join(extract_keywords(abstract or title))
+    description = (
+        f"会议: {saxutils.escape(short_name)} ({ccf_level})<br/>"
+        f"期刊/会议全称: {saxutils.escape(venue_name)}<br/>"
+        f"作者: {saxutils.escape(authors)}<br/>"
+        f"发表日期: {saxutils.escape(pub_date_str)}<br/>"
+        f"关键词: {saxutils.escape(keywords)}<br/>"
+        f"摘要: {saxutils.escape(abstract)}<br/>"
+        f"链接: <a href=\"{saxutils.escape(link)}\">{saxutils.escape(link)}</a>"
+    )
+    return (
+        "<item>"
+        f"<title>{title}</title>"
+        f"<link>{saxutils.escape(link)}</link>"
+        f"<description><![CDATA[{description}]]></description>"
+        f"<pubDate>{pub_date}</pubDate>"
+        "</item>"
+    )
+
+
 async def process_one(session, search_name, short_name, ccf_level, source_type, items, year, state, source_cache):
     state_key = f"{source_type}:{search_name}"
-    last_date = state.get(state_key)
+    last_val = state.get(state_key)
 
     if source_type == "openalex":
         sid = await resolve_source_id(session, search_name, source_cache)
         if not sid:
             print(f"  无法解析 source，跳过 {short_name}", flush=True)
             return False
-        works = await fetch_openalex_works(session, sid, year, last_date)
+        works = await fetch_openalex_works(session, sid, year, last_val)
         if not works:
             print(f"  {short_name} 无新增", flush=True)
             return True
@@ -341,7 +442,7 @@ async def process_one(session, search_name, short_name, ccf_level, source_type, 
         print(f"  {short_name} 完成，{len(works)} 篇（新增）", flush=True)
 
     elif source_type == "ieee":
-        articles = await fetch_ieee_works(session, search_name, year, last_date)
+        articles = await fetch_ieee_works(session, search_name, year, last_val)
         if not articles:
             print(f"  {short_name} 无新增", flush=True)
             return True
@@ -351,6 +452,23 @@ async def process_one(session, search_name, short_name, ccf_level, source_type, 
         if newest:
             state[state_key] = newest
         print(f"  {short_name} 完成，{len(articles)} 篇（新增）", flush=True)
+
+    elif source_type == "openreview":
+        # search_name 是会议简称，构造 venue_id
+        venue_id = f"{search_name}.cc/{year}/Conference"
+        # 兼容 ACL 等特殊格式
+        if search_name == "ACL":
+            venue_id = f"ACL.cc/{year}/Conference"
+        notes = await fetch_openreview_notes(session, venue_id, year, last_val)
+        if not notes:
+            print(f"  {short_name} 无新增", flush=True)
+            return True
+        for n in notes:
+            items.append(build_item_openreview(n, short_name, ccf_level))
+        newest_cdate = max(n.get("cdate", 0) for n in notes)
+        if newest_cdate:
+            state[state_key] = newest_cdate
+        print(f"  {short_name} 完成，{len(notes)} 篇（新增）", flush=True)
 
     return True
 
@@ -382,9 +500,9 @@ async def main():
     rss = f"""<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
 <channel>
-<title>CCF A类会议 Feed (OpenAlex + IEEE)</title>
+<title>CCF A类会议 Feed (OpenAlex + IEEE + OpenReview)</title>
 <link>https://github.com/Wen-Ming-Yuan/dblp-rss-feed</link>
-<description>直接来自 OpenAlex 与 IEEE Xplore 的会议 RSS</description>
+<description>直接来自 OpenAlex / IEEE / OpenReview 的会议 RSS</description>
 {''.join(items)}
 </channel>
 </rss>"""
