@@ -14,50 +14,86 @@ import aiohttp
 # ============ 配置 ============
 # (搜索名, 短名, CCF等级, 数据源类型)
 # source_type: "openalex" | "ieee" | "openreview"
+# (搜索名, 短名, CCF等级, 数据源类型, 全称)
 CONFERENCES = [
-    ("PPoPP", "PPoPP", "CCF A", "openalex"),
-    ("USENIX Annual Technical Conference", "USENIX ATC", "CCF A", "openalex"),
-    ("EuroSys", "EuroSys", "CCF A", "openalex"),
-    ("SIGCOMM", "SIGCOMM", "CCF A", "openalex"),
-    ("MobiCom", "MobiCom", "CCF A", "openalex"),
-    ("IEEE INFOCOM", "INFOCOM", "CCF A", "ieee"),
-    ("USENIX Symposium on Networked Systems Design and Implementation", "NSDI", "CCF A", "openalex"),
-    ("ACM Conference on Computer and Communications Security", "CCS", "CCF A", "openalex"),
-    ("IEEE Symposium on Security and Privacy", "S&P", "CCF A", "ieee"),
-    ("USENIX Security Symposium", "USENIX Security", "CCF A", "openalex"),
-    ("Network and Distributed System Security Symposium", "NDSS", "CCF A", "openalex"),
-    ("PLDI", "PLDI", "CCF A", "openalex"),
-    ("POPL", "POPL", "CCF A", "openalex"),
-    ("SOSP", "SOSP", "CCF A", "openalex"),
-    ("ICSE", "ICSE", "CCF A", "openalex"),
-    ("OSDI", "OSDI", "CCF A", "openalex"),
-    ("SIGMOD", "SIGMOD", "CCF A", "openalex"),
-    ("KDD", "KDD", "CCF A", "openalex"),
-    ("ICDE", "ICDE", "CCF A", "ieee"),
-    ("SIGIR", "SIGIR", "CCF A", "openalex"),
-    ("VLDB", "VLDB", "CCF A", "openalex"),
-    ("STOC", "STOC", "CCF A", "openalex"),
-    ("FOCS", "FOCS", "CCF A", "ieee"),
-    ("ACM Multimedia", "ACM MM", "CCF A", "openalex"),
-    ("SIGGRAPH", "SIGGRAPH", "CCF A", "openalex"),
-    ("IEEE Virtual Reality", "VR", "CCF A", "ieee"),
-    ("IEEE Visualization", "IEEE VIS", "CCF A", "ieee"),
-    # === AI/ML 会议走 OpenReview ===
-    ("AAAI", "AAAI", "CCF A", "openreview"),
-    ("NeurIPS", "NeurIPS", "CCF A", "openreview"),
-    ("ACL", "ACL", "CCF A", "openreview"),
-    ("ICML", "ICML", "CCF A", "openreview"),
-    ("ICLR", "ICLR", "CCF A", "openreview"),
-    # ==============================
-    ("CVPR", "CVPR", "CCF A", "ieee"),
-    ("ICCV", "ICCV", "CCF A", "ieee"),
-    ("CHI", "CHI", "CCF A", "openalex"),
-    ("UbiComp", "UbiComp", "CCF A", "openalex"),
-    ("UIST", "UIST", "CCF A", "openalex"),
-    ("The Web Conference", "WWW", "CCF A", "openalex"),
-    ("IEEE Real-Time Systems Symposium", "RTSS", "CCF A", "ieee"),
-]
+    # ===== 体系结构/并行与分布计算/存储（11个）=====
+    ("PPoPP", "PPoPP", "CCF A", "openalex", "ACM SIGPLAN Symposium on Principles and Practice of Parallel Programming"),
+    ("FAST", "FAST", "CCF A", "openalex", "USENIX Conference on File and Storage Technologies"),
+    ("DAC", "DAC", "CCF A", "openalex", "Design Automation Conference"),
+    ("HPCA", "HPCA", "CCF A", "openalex", "IEEE International Symposium on High Performance Computer Architecture"),
+    ("MICRO", "MICRO", "CCF A", "openalex", "IEEE/ACM International Symposium on Microarchitecture"),
+    ("SC", "SC", "CCF A", "openalex", "International Conference for High Performance Computing, Networking, Storage, and Analysis"),
+    ("ASPLOS", "ASPLOS", "CCF A", "openalex", "International Conference on Architectural Support for Programming Languages and Operating Systems"),
+    ("ISCA", "ISCA", "CCF A", "openalex", "International Symposium on Computer Architecture"),
+    ("USENIX Annual Technical Conference", "USENIX ATC", "CCF A", "openalex", "ACM SIGOPS Annual Technical Conference"),
+    ("EuroSys", "EuroSys", "CCF A", "openalex", "European Conference on Computer Systems"),
+    ("HPDC", "HPDC", "CCF A", "openalex", "International ACM Symposium on High-Performance Parallel and Distributed Computing"),
 
+    # ===== 网络（4个）=====
+    ("SIGCOMM", "SIGCOMM", "CCF A", "openalex", "ACM International Conference on Applications, Technologies, Architectures, and Protocols for Computer Communication"),
+    ("MobiCom", "MobiCom", "CCF A", "openalex", "ACM International Conference on Mobile Computing and Networking"),
+    ("IEEE INFOCOM", "INFOCOM", "CCF A", "ieee", "IEEE International Conference on Computer Communications"),
+    ("NSDI", "NSDI", "CCF A", "openalex", "Symposium on Network System Design and Implementation"),
+
+    # ===== 安全（6个）=====
+    ("ACM Conference on Computer and Communications Security", "CCS", "CCF A", "openalex", "ACM Conference on Computer and Communications Security"),
+    ("EUROCRYPT", "EUROCRYPT", "CCF A", "openalex", "International Conference on the Theory and Applications of Cryptographic Techniques"),
+    ("IEEE Symposium on Security and Privacy", "S&P", "CCF A", "ieee", "IEEE Symposium on Security and Privacy"),
+    ("CRYPTO", "CRYPTO", "CCF A", "openalex", "International Cryptology Conference"),
+    ("USENIX Security Symposium", "USENIX Security", "CCF A", "openalex", "USENIX Security Symposium"),
+    ("Network and Distributed System Security Symposium", "NDSS", "CCF A", "openalex", "Network and Distributed System Security Symposium"),
+
+    # ===== 软工/系统/语言（10个）=====
+    ("PLDI", "PLDI", "CCF A", "openalex", "ACM SIGPLAN Conference on Programming Language Design and Implementation"),
+    ("POPL", "POPL", "CCF A", "openalex", "ACM SIGPLAN-SIGACT Symposium on Principles of Programming Languages"),
+    ("FSE", "FSE", "CCF A", "openalex", "ACM International Conference on the Foundations of Software Engineering"),
+    ("SOSP", "SOSP", "CCF A", "openalex", "ACM Symposium on Operating Systems Principles"),
+    ("OOPSLA", "OOPSLA", "CCF A", "openalex", "Conference on Object-Oriented Programming Systems, Languages, and Applications"),
+    ("ASE", "ASE", "CCF A", "openalex", "International Conference on Automated Software Engineering"),
+    ("ICSE", "ICSE", "CCF A", "openalex", "International Conference on Software Engineering"),
+    ("ISSTA", "ISSTA", "CCF A", "openalex", "International Symposium on Software Testing and Analysis"),
+    ("OSDI", "OSDI", "CCF A", "openalex", "USENIX Symposium on Operating Systems Design and Implementation"),
+    ("FM", "FM", "CCF A", "openalex", "International Symposium on Formal Methods"),
+
+    # ===== 数据库/数据挖掘（5个）=====
+    ("SIGMOD", "SIGMOD", "CCF A", "openalex", "ACM SIGMOD Conference"),
+    ("KDD", "SIGKDD", "CCF A", "openalex", "ACM SIGKDD Conference on Knowledge Discovery and Data Mining"),
+    ("ICDE", "ICDE", "CCF A", "ieee", "IEEE International Conference on Data Engineering"),
+    ("SIGIR", "SIGIR", "CCF A", "openalex", "International ACM SIGIR Conference on Research and Development in Information Retrieval"),
+    ("VLDB", "VLDB", "CCF A", "openalex", "International Conference on Very Large Data Bases"),
+
+    # ===== 理论（5个）=====
+    ("STOC", "STOC", "CCF A", "openalex", "ACM Symposium on the Theory of Computing"),
+    ("SODA", "SODA", "CCF A", "openalex", "ACM-SIAM Symposium on Discrete Algorithms"),
+    ("CAV", "CAV", "CCF A", "openalex", "International Conference on Computer Aided Verification"),
+    ("FOCS", "FOCS", "CCF A", "ieee", "IEEE Annual Symposium on Foundations of Computer Science"),
+    ("LICS", "LICS", "CCF A", "ieee", "ACM/IEEE Symposium on Logic in Computer Science"),
+
+    # ===== 图形学与多媒体（4个）=====
+    ("ACM Multimedia", "ACM MM", "CCF A", "openalex", "ACM International Conference on Multimedia"),
+    ("SIGGRAPH", "SIGGRAPH", "CCF A", "openalex", "ACM Special Interest Group on Computer Graphics"),
+    ("IEEE Virtual Reality", "VR", "CCF A", "ieee", "IEEE Conference on Virtual Reality and 3D User Interfaces"),
+    ("IEEE Visualization", "IEEE VIS", "CCF A", "ieee", "IEEE Visualization Conference"),
+
+    # ===== AI（7个）=====
+    ("AAAI", "AAAI", "CCF A", "openreview", "AAAI Conference on Artificial Intelligence"),
+    ("NeurIPS", "NeurIPS", "CCF A", "openreview", "Conference on Neural Information Processing Systems"),
+    ("ACL", "ACL", "CCF A", "openreview", "Annual Meeting of the Association for Computational Linguistics"),
+    ("CVPR", "CVPR", "CCF A", "ieee", "IEEE/CVF Computer Vision and Pattern Recognition Conference"),
+    ("ICCV", "ICCV", "CCF A", "ieee", "International Conference on Computer Vision"),
+    ("ICML", "ICML", "CCF A", "openreview", "International Conference on Machine Learning"),
+    ("ICLR", "ICLR", "CCF A", "openreview", "International Conference on Learning Representations"),
+
+    # ===== HCI（4个）=====
+    ("CSCW", "CSCW", "CCF A", "openalex", "ACM Conference on Computer-Supported Cooperative Work and Social Computing"),
+    ("CHI", "CHI", "CCF A", "openalex", "ACM Conference on Human Factors in Computing Systems"),
+    ("UbiComp", "UbiComp", "CCF A", "openalex", "ACM International Joint Conference on Pervasive and Ubiquitous Computing"),
+    ("UIST", "UIST", "CCF A", "openalex", "ACM Symposium on User Interface Software and Technology"),
+
+    # ===== 交叉/综合/新兴（2个）=====
+    ("The Web Conference", "WWW", "CCF A", "openalex", "The Web Conference"),
+    ("IEEE Real-Time Systems Symposium", "RTSS", "CCF A", "ieee", "IEEE Real-Time Systems Symposium"),
+]
 STOPWORDS = set(
     "a about above after again against all am an and any are aren't as at be because been before being below between both but by can can't cannot could couldn't did didn't do does doesn't doing don't down during each few for from further had hadn't has hasn't have haven't having he he'd he'll he's her here here's hers herself him himself his how how's i i'd i'll i'm i've if in into is isn't it it's its itself let's me more most mustn't my myself no nor not of off on once only or other ought our ours ourselves out over own same shan't she she'd she'll she's should shouldn't so some such than that that's the their theirs them themselves then there there's these they they'd they'll they're they've this those through to too under until up very was wasn't we we'd we'll we're we've were weren't what what's when when's where where's which while who who's whom why why's with won't would wouldn't you you'd you'll you're you've your yours yourself yourselves".split()
 )
@@ -145,34 +181,44 @@ def _ieee_consume_quota(state, n=1):
     daily["calls_used"] = daily.get("calls_used", 0) + n
 
 # ============ OpenAlex ============
-async def resolve_source_id(session, search_name, cache):
+async def resolve_source_id(session, search_name, full_name,cache):
     if search_name in cache:
         return cache[search_name]
-    params = {"search": search_name, "per-page": 5, "mailto": EMAIL}
-    try:
-        async with session.get("https://api.openalex.org/sources", params=params, timeout=20) as resp:
-            if resp.status != 200:
-                return None
-            data = await resp.json()
-            results = data.get("results", [])
-            if not results:
-                return None
-            sid = results[0]["id"]
-            cache[search_name] = sid
-            print(f"    解析 source: {search_name} -> {sid} ({results[0].get('display_name')})", flush=True)
-            return sid
-    except Exception as e:
-        print(f"    解析 source 失败 {search_name}: {e}", flush=True)
-        return None
+    # 依次尝试：简称 → 全称
+    for query in (search_name, full_name):
+        params = {"search": query, "per-page": 5, "mailto": EMAIL}
+        try:
+            async with session.get("https://api.openalex.org/sources", params=params, timeout=20) as resp:
+                if resp.status != 200:
+                    continue
+                data = await resp.json()
+                results = data.get("results", [])
+                if results:
+                    sid = results[0]["id"]
+                    cache[search_name] = sid
+                    print(f"    解析 source: {query} -> {sid} ({results[0].get('display_name')})", flush=True)
+                    return sid
+        except Exception as e:
+            print(f"    解析 source 失败 {query}: {e}", flush=True)
+    
+    print(f"    ⚠️ 无法解析 source: {search_name}，尝试 display_name 过滤", flush=True)
+    return None
 
 
-async def fetch_openalex_works(session, source_id, year, last_date=None):
+async def fetch_openalex_works(session, source_id, year, last_date=None,fallback_search=None):
     all_works = []
     cursor = "*"
     page_no = 0
     while True:
+        if source_id:
+            filter_str = f"primary_location.source.id:{source_id},publication_year:{year}"
+        elif fallback_search:
+            # 用 display_name 搜索作为 fallback
+            filter_str = f"primary_location.source.display_name.search:{fallback_search},publication_year:{year}"
+        else:
+            break
         params = {
-            "filter": f"primary_location.source.id:{source_id},publication_year:{year}",
+            "filter": filter_str,
             "per-page": OPENALEX_PER_PAGE,
             "cursor": cursor,
             "mailto": EMAIL,
@@ -332,7 +378,8 @@ async def fetch_openreview_notes(session, venue_id, year, last_cdate=None):
             "offset": offset,
         }
         try:
-            async with session.get(url, params=params, timeout=30) as resp:
+            headers = {"User-Agent": "Mozilla/5.0 (compatible; dblp-rss-feed/1.0; mailto:1941870298@qq.com)"}
+            async with session.get(url, params=params, headers=headers, timeout=30) as resp:
                 if resp.status != 200:
                     print(f"    OpenReview HTTP {resp.status}", flush=True)
                     break
@@ -605,11 +652,11 @@ async def main():
     failed = []
 
     async with aiohttp.ClientSession() as session:
-        for idx, (search_name, short_name, ccf_level, source_type) in enumerate(CONFERENCES, 1):
+        for idx, (search_name, short_name, ccf_level, source_type，full_name) in enumerate(CONFERENCES, 1):
             print(f"[{idx}/{len(CONFERENCES)}] {short_name} ({source_type}) ...", flush=True)
             try:
                 ok = await process_one(session, search_name, short_name, ccf_level,
-                                       source_type, items, year, state, source_cache)
+                                       source_type, items, year, state, source_cache,full_name)
             except Exception as e:
                 print(f"  异常: {e}", flush=True)
                 ok = False
