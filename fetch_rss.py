@@ -222,7 +222,7 @@ def build_item(hit, short_name, ccf_level, abstract):
 
 async def process_one(page, session, streamid, short_name, ccf_level, items, min_year):
     """处理单个会议，成功返回 True，抓取失败返回 False。"""
-    hits = await fetch_all_hits(page, streamid)
+    hits = await fetch_all_hits(page, streamid, min_year)
     if not hits:
         return False
 
