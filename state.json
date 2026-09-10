@@ -2,12 +2,18 @@
   "openalex:SIGCOMM": "2026-07-01",
   "_ieee_daily": {
     "date": "2026-09-10",
-    "calls_used": 9
+    "calls_used": 19
   },
   "openalex:SIGMOD": "2026-07-20",
   "openalex:SIGIR": "2026-06-01",
   "openalex:VLDB": "2026-07-01",
   "openalex:ACM Multimedia": "2026-09-09",
   "openalex:UbiComp": "2026-08-12",
-  "openalex:The Web Conference": "2026-05-25"
+  "openalex:The Web Conference": "2026-05-25",
+  "openalex:FAST": "2026-06-16",
+  "openalex:MICRO": "2026-09-09",
+  "openalex:FSE": "2026-02-11",
+  "openalex:ASE": "2026-09-03",
+  "openalex:FM": "2026-09-06",
+  "openalex:CSCW": "2026-09-01"
 }
