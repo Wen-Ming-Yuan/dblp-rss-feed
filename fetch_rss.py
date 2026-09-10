@@ -71,6 +71,8 @@ SEMAPHORE = asyncio.Semaphore(OPENALEX_CONCURRENCY)
 
 IEEE_API_KEY = os.environ.get("IEEE_API_KEY", "")
 IEEE_MAX_RECORDS = 200
+IEEE_DAILY_LIMIT = 200                      # 每日调用上限
+IEEE_MIN_INTERVAL = 1.0 / 10 + 0.05         # 10 calls/s → 最小间隔 0.15s
 
 STATE_FILE = "state.json"
 SOURCE_CACHE_FILE = "source_cache.json"
@@ -110,6 +112,37 @@ def extract_keywords(text, top_n=8):
         return []
     return [w for w, _ in Counter(filtered).most_common(top_n)]
 
+_last_ieee_call_time = 0.0
+
+
+async def _ieee_rate_limit():
+    """确保 IEEE API 调用间隔 >= 0.15s，满足 10 calls/s 限制。"""
+    global _last_ieee_call_time
+    now = time.monotonic()
+    elapsed = now - _last_ieee_call_time
+    if elapsed < IEEE_MIN_INTERVAL:
+        await asyncio.sleep(IEEE_MIN_INTERVAL - elapsed)
+    _last_ieee_call_time = time.monotonic()
+
+
+def _ieee_check_quota(state):
+    """返回今日剩余 IEEE 调用次数，跨日自动重置。"""
+    today = datetime.now().strftime("%Y-%m-%d")
+    daily = state.get("_ieee_daily", {})
+    if daily.get("date") != today:
+        state["_ieee_daily"] = {"date": today, "calls_used": 0}
+        return IEEE_DAILY_LIMIT
+    return IEEE_DAILY_LIMIT - daily.get("calls_used", 0)
+
+
+def _ieee_consume_quota(state, n=1):
+    """消耗配额，每次 HTTP 请求（无论成功失败）都应调用。"""
+    today = datetime.now().strftime("%Y-%m-%d")
+    daily = state.setdefault("_ieee_daily", {"date": today, "calls_used": 0})
+    if daily.get("date") != today:
+        daily["date"] = today
+        daily["calls_used"] = 0
+    daily["calls_used"] = daily.get("calls_used", 0) + n
 
 # ============ OpenAlex ============
 async def resolve_source_id(session, search_name, cache):
@@ -188,15 +221,34 @@ async def fetch_openalex_works(session, source_id, year, last_date=None):
 
 
 # ============ IEEE Xplore ============
-async def fetch_ieee_works(session, search_name, year, last_date=None):
+async def fetch_ieee_works(session, search_name, year, state, state_key):
+    """带每日配额 + 速率控制 + 跨日续抓的 IEEE 抓取。"""
     if not IEEE_API_KEY:
         print(f"    未配置 IEEE_API_KEY，跳过", flush=True)
         return []
 
+    # 兼容旧格式（字符串）与新格式（dict）
+    entry = state.get(state_key, {})
+    if isinstance(entry, str):
+        entry = {"last_date": entry}
+    last_date = entry.get("last_date")
+    start = entry.get("next_start_record", 1)
+
     all_works = []
-    start = 1
     total = None
+
     while True:
+        remaining = _ieee_check_quota(state)
+        if remaining <= 0:
+            print(f"    IEEE 今日配额已用完（{IEEE_DAILY_LIMIT} 次），留到明天继续", flush=True)
+            entry["next_start_record"] = start
+            if total:
+                entry["total_records"] = total
+            state[state_key] = entry
+            break
+
+        await _ieee_rate_limit()
+
         params = {
             "apikey": IEEE_API_KEY,
             "format": "json",
@@ -209,19 +261,26 @@ async def fetch_ieee_works(session, search_name, year, last_date=None):
             "sort_order": "desc",
         }
         try:
-            async with session.get("https://ieeexploreapi.ieee.org/api/v1/search/articles",
-                                   params=params, timeout=30) as resp:
+            async with session.get(
+                "https://ieeexploreapi.ieee.org/api/v1/search/articles",
+                params=params, timeout=30
+            ) as resp:
+                _ieee_consume_quota(state, 1)
                 if resp.status != 200:
                     print(f"    IEEE HTTP {resp.status}", flush=True)
                     break
                 data = await resp.json()
         except Exception as e:
+            _ieee_consume_quota(state, 1)
             print(f"    IEEE 失败: {e}", flush=True)
             break
 
         articles = data.get("articles", [])
         total = data.get("total_records", 0)
         if not articles:
+            entry.pop("next_start_record", None)
+            entry.pop("total_records", None)
+            state[state_key] = entry
             break
 
         stop = False
@@ -237,12 +296,21 @@ async def fetch_ieee_works(session, search_name, year, last_date=None):
         else:
             all_works.extend(articles)
 
-        print(f"    IEEE 第 {start}-{start+len(articles)-1}/{total} 条，累计 {len(all_works)}", flush=True)
+        used = state["_ieee_daily"]["calls_used"]
+        print(f"    IEEE 第 {start}-{start+len(articles)-1}/{total} 条，累计 {len(all_works)}，今日已用 {used}/{IEEE_DAILY_LIMIT}", flush=True)
 
+        # 抓完 or 遇到旧数据 → 清空游标
         if stop or start + len(articles) > total:
+            entry.pop("next_start_record", None)
+            entry.pop("total_records", None)
+            state[state_key] = entry
             break
+
+        # 还有下一页，保存游标后继续
         start += IEEE_MAX_RECORDS
-        await asyncio.sleep(random.uniform(0.5, 1.5))
+        entry["next_start_record"] = start
+        entry["total_records"] = total
+        state[state_key] = entry
 
     return all_works
 
@@ -298,7 +366,35 @@ async def fetch_openreview_notes(session, venue_id, year, last_cdate=None):
 
     return all_notes
 
-
+async def enrich_from_openalex(session, title):
+    """用标题去 OpenAlex 查元数据，补全 DOI / venue 全称 / 发表日期。"""
+    async with SEMAPHORE:
+        params = {"search": title, "per-page": 1, "mailto": EMAIL}
+        try:
+            async with session.get("https://api.openalex.org/works", params=params, timeout=15) as resp:
+                if resp.status != 200:
+                    return {}
+                data = await resp.json()
+                results = data.get("results", [])
+                if not results:
+                    return {}
+                w = results[0]
+                # 标题相似度粗筛，避免匹配错论文
+                found_title = (w.get("title") or "").lower().strip()
+                query_title = title.lower().strip()
+                # 简单判断：前 30 个字符匹配即认为命中
+                if query_title[:30] not in found_title and found_title[:30] not in query_title:
+                    return {}
+                venue = (w.get("primary_location") or {}).get("source", {}) or {}
+                return {
+                    "doi": w.get("doi") or "",
+                    "venue_name": venue.get("display_name", ""),
+                    "publication_date": w.get("publication_date") or "",
+                    "cited_by_count": w.get("cited_by_count", 0),
+                }
+        except Exception:
+            return {}
+            
 # ============ 构建 RSS item ============
 def build_item_openalex(w, short_name, ccf_level):
     title = saxutils.escape(w.get("title") or "无标题")
@@ -321,7 +417,7 @@ def build_item_openalex(w, short_name, ccf_level):
     keywords = ", ".join(extract_keywords(abstract or w.get("title", "")))
     description = (
         f"会议: {saxutils.escape(short_name)} ({ccf_level})<br/>"
-        f"期刊/会议全称: {saxutils.escape(venue_name)}<br/>"
+        f"会议全称: {saxutils.escape(venue_name)}<br/>"
         f"作者: {saxutils.escape(authors)}<br/>"
         f"发表日期: {saxutils.escape(pub_date_str)}<br/>"
         f"关键词: {saxutils.escape(keywords)}<br/>"
@@ -356,7 +452,7 @@ def build_item_ieee(a, short_name, ccf_level):
     keywords = ", ".join(extract_keywords(abstract or a.get("title", "")))
     description = (
         f"会议: {saxutils.escape(short_name)} ({ccf_level})<br/>"
-        f"期刊/会议全称: {saxutils.escape(venue_name)}<br/>"
+        f"会议全称: {saxutils.escape(venue_name)}<br/>"
         f"作者: {saxutils.escape(authors_str)}<br/>"
         f"发表日期: {saxutils.escape(pub_date_str)}<br/>"
         f"DOI: {saxutils.escape(doi)}<br/>"
@@ -374,7 +470,8 @@ def build_item_ieee(a, short_name, ccf_level):
     )
 
 
-def build_item_openreview(note, short_name, ccf_level):
+def build_item_openreview(note, short_name, ccf_level,, enrich=None):
+    enrich = enrich or {}
     content = note.get("content", {})
     # OpenReview v2 的 content 值可能是 {'value': ...} 结构
     def get_val(key):
@@ -385,12 +482,11 @@ def build_item_openreview(note, short_name, ccf_level):
 
     title = saxutils.escape(get_val("title") or "无标题")
     authors_raw = get_val("authors") or []
-    if isinstance(authors_raw, list):
-        authors = ", ".join(authors_raw)
-    else:
-        authors = str(authors_raw)
+    authors = ", ".join(authors_raw) if isinstance(authors_raw, list) else str(authors_raw)
     abstract = get_val("abstract") or ""
-    venue_name = get_val("venue") or short_name
+    venue_name = enrich.get("venue_name") or get_val("venue") or short_name
+    doi = enrich.get("doi") or ""
+    cited = enrich.get("cited_by_count", 0)
     note_id = note.get("id", "")
     link = f"https://openreview.net/forum?id={note_id}"
     cdate_ms = note.get("cdate", 0)
@@ -400,13 +496,24 @@ def build_item_openreview(note, short_name, ccf_level):
     except Exception:
         pub_date = formatdate(time.time(), usegmt=True)
         pub_date_str = ""
+    # 优先用 OpenAlex 的发表日期
+    if enrich.get("publication_date"):
+        pub_date_str = enrich["publication_date"]
+        try:
+            pub_date = formatdate(
+                time.mktime(time.strptime(pub_date_str, "%Y-%m-%d")), usegmt=True
+            )
+        except Exception:
+            pass
 
     keywords = ", ".join(extract_keywords(abstract or title))
     description = (
         f"会议: {saxutils.escape(short_name)} ({ccf_level})<br/>"
-        f"期刊/会议全称: {saxutils.escape(venue_name)}<br/>"
+        f"会议全称: {saxutils.escape(venue_name)}<br/>"
         f"作者: {saxutils.escape(authors)}<br/>"
         f"发表日期: {saxutils.escape(pub_date_str)}<br/>"
+        f"DOI: {saxutils.escape(doi)}<br/>"
+        f"引用数: {cited}<br/>"
         f"关键词: {saxutils.escape(keywords)}<br/>"
         f"摘要: {saxutils.escape(abstract)}<br/>"
         f"链接: <a href=\"{saxutils.escape(link)}\">{saxutils.escape(link)}</a>"
@@ -442,15 +549,20 @@ async def process_one(session, search_name, short_name, ccf_level, source_type, 
         print(f"  {short_name} 完成，{len(works)} 篇（新增）", flush=True)
 
     elif source_type == "ieee":
-        articles = await fetch_ieee_works(session, search_name, year, last_val)
+        articles = await fetch_ieee_works(session, search_name, year, state, state_key)
         if not articles:
             print(f"  {short_name} 无新增", flush=True)
             return True
         for a in articles:
             items.append(build_item_ieee(a, short_name, ccf_level))
+        # 更新 last_date（保留 next_start_record 游标）
+        entry = state.get(state_key, {})
+        if isinstance(entry, str):
+            entry = {"last_date": entry}
         newest = max((a.get("publication_date") or "") for a in articles)
-        if newest:
-            state[state_key] = newest
+        if newest and (not entry.get("last_date") or newest > entry["last_date"]):
+            entry["last_date"] = newest
+        state[state_key] = entry
         print(f"  {short_name} 完成，{len(articles)} 篇（新增）", flush=True)
 
     elif source_type == "openreview":
@@ -463,8 +575,19 @@ async def process_one(session, search_name, short_name, ccf_level, source_type, 
         if not notes:
             print(f"  {short_name} 无新增", flush=True)
             return True
-        for n in notes:
-            items.append(build_item_openreview(n, short_name, ccf_level))
+       # === 并发补充 OpenAlex 元数据 ===
+        titles = [
+            (n.get("content", {}).get("title") or {}).get("value", "")
+            if isinstance(n.get("content", {}).get("title"), dict)
+            else n.get("content", {}).get("title", "")
+            for n in notes
+        ]
+        enriched = await asyncio.gather(
+            *[enrich_from_openalex(session, t) for t in titles]
+        )
+        for n, meta in zip(notes, enriched):
+            items.append(build_item_openreview(n, short_name, ccf_level, meta))
+
         newest_cdate = max(n.get("cdate", 0) for n in notes)
         if newest_cdate:
             state[state_key] = newest_cdate
