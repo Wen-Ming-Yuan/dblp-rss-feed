@@ -45,13 +45,14 @@ jobs:
         run: |
           [ -f state.json ] || echo '{}' > state.json
           [ -f source_cache.json ] || echo '{}' > source_cache.json
+          [ -f items.json ] || echo '{}' > items.json
 
       # 6. 把增量状态提交回主分支，持久化
       - name: 提交增量状态
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add state.json source_cache.json
+          git add state.json source_cache.json items.json
           if ! git diff --cached --quiet; then
             git commit -m "chore: update state [skip ci]"
             git push origin main
@@ -67,4 +68,4 @@ jobs:
           publish_dir: ./
           publish_branch: gh-pages
           keep_files: true
-          exclude_assets: '.github,fetch_rss.py,requirements.txt,state.json,source_cache.json,README.md'
+          exclude_assets: '.github,fetch_rss.py,requirements.txt,state.json,source_cache.json,items.json,README.md'
