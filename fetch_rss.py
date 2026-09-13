@@ -223,8 +223,7 @@ async def fetch_openalex_works(session, source_id, year, last_date=None,fallback
         if source_id:
             filter_str = f"primary_location.source.id:{source_id},publication_year:{year}"
         elif fallback_search:
-            # 用 display_name 搜索作为 fallback
-            filter_str = f"primary_location.source.display_name.search:{fallback_search},publication_year:{year}"
+            filter_str = f"title_and_abstract.search:{fallback_search},publication_year:{year}"
         else:
             break
         params = {
