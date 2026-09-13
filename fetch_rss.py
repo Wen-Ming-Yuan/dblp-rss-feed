@@ -121,6 +121,7 @@ IEEE_MIN_INTERVAL = 1.0 / 10 + 0.05         # 10 calls/s → 最小间隔 0.15s
 
 STATE_FILE = "state.json"
 SOURCE_CACHE_FILE = "source_cache.json"
+ITEMS_FILE = "items.json"
 
 
 def load_json(path):
@@ -704,8 +705,13 @@ async def main():
     year = datetime.now().year
     state = load_json(STATE_FILE)
     source_cache = load_json(SOURCE_CACHE_FILE)
+    # ===== 读取累积的旧 items =====
+    old_items = load_json(ITEMS_FILE) or {}
+    # old_items 结构: { "link_url": {"item_xml": "...", "pub_date": "..."} }
+    print(f"加载历史条目 {len(old_items)} 条", flush=True)
 
-    items = []
+    new_items = []          # 本次新增的 item XML 字符串
+    new_item_keys = {}      # 本次新增：link -> item_xml
     failed = []
 
     async with aiohttp.ClientSession() as session:
@@ -723,6 +729,25 @@ async def main():
 
     save_json(STATE_FILE, state)
     save_json(SOURCE_CACHE_FILE, source_cache)
+
+    # ===== 合并：旧 items + 本次新增 =====
+    # 从 item XML 里提取 <link> 作为唯一键
+    import re as _re
+    
+    def _extract_link(item_xml):
+        m = _re.search(r"<link>(.*?)</link>", item_xml)
+        return m.group(1) if m else None
+    
+    all_items = dict(old_items)   # 旧的先放进去
+    for item_xml in new_items:
+        link = _extract_link(item_xml)
+        if link:
+            all_items[link] = item_xml
+    
+    print(f"累积条目：旧 {len(old_items)} + 新增 {len(new_items)}，去重后共 {len(all_items)} 条", flush=True)
+    
+    # 保存累积 items 供下次使用
+    save_json(ITEMS_FILE, all_items)
 
     rss = f"""<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
