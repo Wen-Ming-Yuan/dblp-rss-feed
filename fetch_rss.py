@@ -392,7 +392,7 @@ async def fetch_openreview_notes(session, venue_id, year, last_cdate=None):
             "offset": offset,
         }
         try:
-            headers = {"User-Agent": "Mozilla/5.0 (compatible; dblp-rss-feed/1.0; mailto:1941870298@qq.com)"}
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", "Accept": "application/json",}
             async with session.get(url, params=params, headers=headers, timeout=30) as resp:
                 if resp.status != 200:
                     print(f"    OpenReview HTTP {resp.status}", flush=True)
