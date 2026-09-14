@@ -45,6 +45,7 @@ class AcmDlSource(BaseSource):
                 return html
             except Exception as e:
                 print(f"[ACM] Playwright 兜底失败: {e}")
+                print(traceback.format_exc())   # ← 修复：完整堆栈
                 return None
 
     def _parse(self, soup, conf, year):
