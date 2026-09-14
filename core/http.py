@@ -5,7 +5,7 @@ from urllib3.util.retry import Retry
 
 _session = None
 _last_ts = 0.0
-
+_http_throttle_lock = threading.Lock()
 
 def get_session() -> requests.Session:
     global _session
@@ -32,9 +32,10 @@ def get_session() -> requests.Session:
 
 def throttled_get(url, min_interval=0.15, **kwargs):
     global _last_ts
-    gap = time.time() - _last_ts
-    if gap < min_interval:
-        time.sleep(min_interval - gap)
-    resp = get_session().get(url, timeout=30, **kwargs)
-    _last_ts = time.time()
+    with _http_throttle_lock:
+        gap = time.time() - _last_ts
+        if gap < min_interval:
+            time.sleep(min_interval - gap)
+        resp = get_session().get(url, timeout=30, **kwargs)
+        _last_ts = time.time()
     return resp
