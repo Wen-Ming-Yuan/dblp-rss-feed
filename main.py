@@ -35,6 +35,10 @@ def main():
     ieee_confs = [c for c in confs if c["source"] == "ieee"]
 
     all_papers = []
+    # 约定：并行任务的 source 只能【只读】state，禁止修改 state。
+    # 当前只有 IEEE 会写 state，而 IEEE 是串行跑的（见下方 for 循环）。
+    # 若未来给某个并行 source 加写 state 逻辑，必须改为「返回 partial_state，
+    # 主线程合并」的写法，否则会出现并发写覆盖。
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
         futures = {
