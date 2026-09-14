@@ -1,5 +1,6 @@
 import re
 import threading
+import traceback
 from datetime import datetime
 from bs4 import BeautifulSoup
 from sources.base import BaseSource
@@ -7,6 +8,12 @@ from core.http import get_session
 
 # 全局锁：保证同一时间只有一个 Playwright 实例
 _PW_LOCK = threading.Lock()
+# 屏蔽图片/字体/媒体，加速页面加载
+_BLOCK_RESOURCES = {"image", "font", "media"}
+
+UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+      "AppleWebKit/537.36 (KHTML, like Gecko) "
+      "Chrome/151.0.0.0 Safari/537.36")
 
 
 class AcmDlSource(BaseSource):
@@ -22,6 +29,7 @@ class AcmDlSource(BaseSource):
         url = self.BASE + doi
         html = self._get_html(url)
         if not html:
+            print(f"[ACM] {conf['short']} 未拿到 HTML")
             return []
         soup = BeautifulSoup(html, "lxml")
         papers = self._parse(soup, conf, year)
@@ -37,16 +45,39 @@ class AcmDlSource(BaseSource):
             try:
                 from playwright.sync_api import sync_playwright
                 with sync_playwright() as pw:
-                    browser = pw.chromium.launch(headless=True)
-                    page = browser.new_page()
-                    page.goto(url, wait_until="networkidle", timeout=60000)
+                    browser = pw.chromium.launch(headless=True,args=["--no-sandbox", "--disable-dev-shm-usage"],)
+                    ctx = browser.new_context(
+                        user_agent=UA,
+                        locale="en-US",
+                        viewport={"width": 1366, "height": 900},
+                    )
+                    # 阻断图片/字体，加速
+                    def _route(route):
+                        if route.request.resource_type in _BLOCK_RESOURCES:
+                            route.abort()
+                        else:
+                            route.continue_()
+
+                    page.route("**/*", _route)
+
+                    # 关键：不用 networkidle
+                    page.goto(url, wait_until="domcontentloaded", timeout=45000)
+                    page.wait_for_timeout(3000)
+
+                    # 等待正文出现，最多再等 10 秒
+                    try:
+                        page.wait_for_selector("div.issue-item", timeout=10000)
+                    except Exception:
+                        pass
+
                     html = page.content()
                     browser.close()
                 return html
             except Exception as e:
                 print(f"[ACM] Playwright 兜底失败: {e}")
-                print(traceback.format_exc())   # ← 修复：完整堆栈
+                print(traceback.format_exc())
                 return None
+                    
 
     def _parse(self, soup, conf, year):
         papers = []
