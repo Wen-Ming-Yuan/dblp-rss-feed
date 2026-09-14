@@ -1,0 +1,67 @@
+# ============ ACM DL（26） ============
+- {short: PPoPP,    full: "ACM SIGPLAN Symposium on Principles & Practice of Parallel Programming", ccf_category: "并行", source: acm_dl, conf_year: 2026, proceedings_doi: "10.1145/3627535"}
+- {short: DAC,      full: "Design Automation Conference", ccf_category: "EDA", source: acm_dl, conf_year: 2026, proceedings_doi: "10.1145/3649329"}
+- {short: ASPLOS,   full: "International Conference on Architectural Support for Programming Languages and Operating Systems", ccf_category: "体系结构", source: acm_dl, conf_year: 2026, proceedings_doi: "10.1145/3622781"}
+- {short: EuroSys,  full: "European Conference on Computer Systems", ccf_category: "系统", source: acm_dl, conf_year: 2026, proceedings_doi: "10.1145/3627703"}
+- {short: SIGCOMM,  full: "ACM SIGCOMM Conference", ccf_category: "网络", source: acm_dl, conf_year: 2026, proceedings_doi: "10.1145/3789240"}
+- {short: MobiCom,  full: "ACM International Conference on Mobile Computing and Networking", ccf_category: "网络", source: acm_dl, conf_year: 2026, proceedings_doi: "10.1145/3636534"}
+- {short: CCS,      full: "ACM Conference on Computer and Communications Security", ccf_category: "安全", source: acm_dl, conf_year: 2026, proceedings_doi: "10.1145/3658644"}
+- {short: PLDI,     full: "ACM SIGPLAN Conference on Programming Language Design and Implementation", ccf_category: "PL", source: acm_dl, conf_year: 2026, proceedings_doi: "10.1145/3656403"}
+- {short: POPL,     full: "ACM SIGPLAN Symposium on Principles of Programming Languages", ccf_category: "PL", source: acm_dl, conf_year: 2026, proceedings_doi: "10.1145/3632852"}
+- {short: FSE,      full: "ACM International Conference on the Foundations of Software Engineering", ccf_category: "软件工程", source: acm_dl, conf_year: 2026, proceedings_doi: "10.1145/3663529"}
+- {short: SOSP,     full: "ACM Symposium on Operating Systems Principles", ccf_category: "系统", source: acm_dl, conf_year: 2026, proceedings_doi: "10.1145/3600006"}
+- {short: OOPSLA,   full: "ACM SIGPLAN Conference on Object-Oriented Programming Systems, Languages, and Applications", ccf_category: "PL", source: acm_dl, conf_year: 2026, proceedings_doi: "10.1145/3649819"}
+- {short: ISSTA,    full: "ACM SIGSOFT International Symposium on Software Testing and Analysis", ccf_category: "软件工程", source: acm_dl, conf_year: 2026, proceedings_doi: "10.1145/3650212"}
+- {short: ACM-ATC,  full: "ACM SIGOPS Annual Technical Conference (原 USENIX ATC)", ccf_category: "系统", source: acm_dl, conf_year: 2026, proceedings_doi: "10.1145/3621234"}
+- {short: SIGMOD,   full: "ACM SIGMOD Conference", ccf_category: "数据库", source: acm_dl, conf_year: 2026, proceedings_doi: "10.1145/3626246"}
+- {short: SIGKDD,   full: "ACM SIGKDD Conference on Knowledge Discovery and Data Mining", ccf_category: "数据挖掘", source: acm_dl, conf_year: 2026, proceedings_doi: "10.1145/3637528"}
+- {short: SIGIR,    full: "International ACM SIGIR Conference on Research and Development in Information Retrieval", ccf_category: "IR", source: acm_dl, conf_year: 2026, proceedings_doi: "10.1145/3626772"}
+- {short: VLDB,     full: "International Conference on Very Large Data Bases", ccf_category: "数据库", source: acm_dl, conf_year: 2026, proceedings_doi: "10.1145/3626246"}
+- {short: STOC,     full: "ACM Symposium on the Theory of Computing", ccf_category: "理论", source: acm_dl, conf_year: 2026, proceedings_doi: "10.1145/3618260"}
+- {short: ACM-MM,   full: "ACM International Conference on Multimedia", ccf_category: "多媒体", source: acm_dl, conf_year: 2026, proceedings_doi: "10.1145/3664647"}
+- {short: SIGGRAPH, full: "ACM SIGGRAPH Conference", ccf_category: "图形", source: acm_dl, conf_year: 2026, proceedings_doi: "10.1145/3641519"}
+- {short: CSCW,     full: "ACM Conference on Computer-Supported Cooperative Work and Social Computing", ccf_category: "HCI", source: acm_dl, conf_year: 2026, proceedings_doi: "10.1145/3637409"}
+- {short: CHI,      full: "ACM Conference on Human Factors in Computing Systems", ccf_category: "HCI", source: acm_dl, conf_year: 2026, proceedings_doi: "10.1145/3613904"}
+- {short: UbiComp,  full: "ACM International Joint Conference on Pervasive and Ubiquitous Computing", ccf_category: "HCI", source: acm_dl, conf_year: 2026, proceedings_doi: "10.1145/3675094"}
+- {short: UIST,     full: "ACM Symposium on User Interface Software and Technology", ccf_category: "HCI", source: acm_dl, conf_year: 2026, proceedings_doi: "10.1145/3654777"}
+- {short: WWW,      full: "The Web Conference", ccf_category: "交叉", source: acm_dl, conf_year: 2026, proceedings_doi: "10.1145/3589334"}
+
+# ============ IEEE API（18） ============
+- {short: HPCA,     full: "IEEE International Symposium on High Performance Computer Architecture", ccf_category: "体系结构", source: ieee, conf_year: 2026, ieee_query: '("High Performance Computer Architecture") AND ("2026")'}
+- {short: MICRO,    full: "IEEE/ACM International Symposium on Microarchitecture", ccf_category: "体系结构", source: ieee, conf_year: 2026, ieee_query: '("International Symposium on Microarchitecture") AND ("2026")'}
+- {short: SC,       full: "International Conference for High Performance Computing, Networking, Storage and Analysis", ccf_category: "体系结构", source: ieee, conf_year: 2026, ieee_query: '("Supercomputing") AND ("2026")'}
+- {short: ISCA,     full: "International Symposium on Computer Architecture", ccf_category: "体系结构", source: ieee, conf_year: 2026, ieee_query: '("International Symposium on Computer Architecture") AND ("2026")'}
+- {short: HPDC,     full: "International ACM Symposium on High-Performance Parallel and Distributed Computing", ccf_category: "体系结构", source: ieee, conf_year: 2026, ieee_query: '("High-Performance Parallel and Distributed Computing") AND ("2026")'}
+- {short: INFOCOM,  full: "IEEE International Conference on Computer Communications", ccf_category: "网络", source: ieee, conf_year: 2026, ieee_query: '("INFOCOM") AND ("2026")'}
+- {short: "S&P",    full: "IEEE Symposium on Security and Privacy", ccf_category: "安全", source: ieee, conf_year: 2026, ieee_query: '("Symposium on Security and Privacy") AND ("2026")'}
+- {short: NDSS,     full: "Network and Distributed System Security Symposium", ccf_category: "安全", source: ieee, conf_year: 2026, ieee_query: '("NDSS") AND ("2026")'}
+- {short: ASE,      full: "International Conference on Automated Software Engineering", ccf_category: "软件工程", source: ieee, conf_year: 2026, ieee_query: '("Automated Software Engineering") AND ("2026")'}
+- {short: ICSE,     full: "International Conference on Software Engineering", ccf_category: "软件工程", source: ieee, conf_year: 2026, ieee_query: '("International Conference on Software Engineering") AND ("2026")'}
+- {short: ICDE,     full: "IEEE International Conference on Data Engineering", ccf_category: "数据库", source: ieee, conf_year: 2026, ieee_query: '("International Conference on Data Engineering") AND ("2026")'}
+- {short: FOCS,     full: "IEEE Annual Symposium on Foundations of Computer Science", ccf_category: "理论", source: ieee, conf_year: 2026, ieee_query: '("Foundations of Computer Science") AND ("2026")'}
+- {short: LICS,     full: "ACM/IEEE Symposium on Logic in Computer Science", ccf_category: "理论", source: ieee, conf_year: 2026, ieee_query: '("Logic in Computer Science") AND ("2026")'}
+- {short: VR,       full: "IEEE Conference on Virtual Reality and 3D User Interfaces", ccf_category: "VR", source: ieee, conf_year: 2026, ieee_query: '("IEEE Virtual Reality") AND ("2026")'}
+- {short: IEEE-VIS, full: "IEEE Visualization Conference (TVCG)", ccf_category: "可视化", source: ieee, conf_year: 2026, ieee_query: '("IEEE Transactions on Visualization and Computer Graphics") AND ("2026")'}
+- {short: CVPR,     full: "IEEE/CVF Computer Vision and Pattern Recognition Conference", ccf_category: "AI", source: ieee, conf_year: 2026, ieee_query: '("Computer Vision and Pattern Recognition") AND ("2026")'}
+- {short: ICCV,     full: "International Conference on Computer Vision", ccf_category: "AI", source: ieee, conf_year: 2026, ieee_query: '("International Conference on Computer Vision") AND ("2026")'}
+- {short: RTSS,     full: "IEEE Real-Time Systems Symposium", ccf_category: "实时", source: ieee, conf_year: 2026, ieee_query: '("Real-Time Systems Symposium") AND ("2026")'}
+
+# ============ USENIX（4） ============
+- {short: FAST,     full: "USENIX Conference on File and Storage Technologies", ccf_category: "存储", source: usenix, conf_year: 2026, usenix_path: "fast26"}
+- {short: NSDI,     full: "USENIX Symposium on Networked Systems Design and Implementation", ccf_category: "网络", source: usenix, conf_year: 2026, usenix_path: "nsdi26"}
+- {short: USENIX-Security, full: "USENIX Security Symposium", ccf_category: "安全", source: usenix, conf_year: 2026, usenix_path: "usenixsecurity26"}
+- {short: OSDI,     full: "USENIX Symposium on Operating Systems Design and Implementation", ccf_category: "系统", source: usenix, conf_year: 2026, usenix_path: "osdi26"}
+
+# ============ Springer（4） ============
+- {short: EUROCRYPT, full: "International Conference on the Theory and Applications of Cryptographic Techniques", ccf_category: "密码", source: springer, conf_year: 2026, springer_url: "https://link.springer.com/book/10.1007/978-3-031-58734-4"}
+- {short: CRYPTO,   full: "International Cryptology Conference", ccf_category: "密码", source: springer, conf_year: 2026, springer_url: "https://link.springer.com/book/10.1007/978-3-031-68394-4"}
+- {short: CAV,      full: "International Conference on Computer Aided Verification", ccf_category: "形式化", source: springer, conf_year: 2026, springer_url: "https://link.springer.com/book/10.1007/978-3-031-65630-9"}
+- {short: FM,       full: "International Symposium on Formal Methods", ccf_category: "形式化", source: springer, conf_year: 2026, springer_url: "https://link.springer.com/book/10.1007/978-3-031-71177-0"}
+
+# ============ Other（6） ============
+- {short: SODA,     full: "ACM-SIAM Symposium on Discrete Algorithms", ccf_category: "理论", source: other, conf_year: 2026, other_kind: "siam", toc_url: "https://epubs.siam.org/toc/sjdmec/2026/1"}
+- {short: AAAI,     full: "AAAI Conference on Artificial Intelligence", ccf_category: "AI", source: other, conf_year: 2026, other_kind: "aaai", toc_url: "https://ojs.aaai.org/index.php/AAAI/issue/archive"}
+- {short: NeurIPS,  full: "Conference on Neural Information Processing Systems", ccf_category: "AI", source: other, conf_year: 2026, other_kind: "nips", toc_url: "https://papers.nips.cc/paper_files/paper/2026"}
+- {short: ACL,      full: "Annual Meeting of the Association for Computational Linguistics", ccf_category: "NLP", source: other, conf_year: 2026, other_kind: "acl", toc_url: "https://aclanthology.org/events/acl-2026/"}
+- {short: ICML,     full: "International Conference on Machine Learning", ccf_category: "AI", source: other, conf_year: 2026, other_kind: "pmlr", toc_url: "https://proceedings.mlr.press/"}
+- {short: ICLR,     full: "International Conference on Learning Representations", ccf_category: "AI", source: other, conf_year: 2026, other_kind: "openreview", openreview_venue: "ICLR.cc/2026/Conference"}
