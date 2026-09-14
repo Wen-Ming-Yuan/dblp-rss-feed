@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<rss xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/" version="2.0">
+  <channel>
+    <title>CCF-A 全部会议汇总</title>
+    <link>https://wen-ming-yuan.github.io/dblp-rss-feed/</link>
+    <description>所有追踪的 CCF-A 会议新论文</description>
+    <docs>http://www.rssboard.org/rss-specification</docs>
+    <generator>python-feedgen</generator>
+    <lastBuildDate>Mon, 14 Sep 2026 12:23:38 +0000</lastBuildDate>
+  </channel>
+</rss>

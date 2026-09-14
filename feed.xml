@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0">
-<channel>
-<title>CCF A类会议 Feed (OpenAlex + IEEE + OpenReview)</title>
-<link>https://github.com/Wen-Ming-Yuan/dblp-rss-feed</link>
-<description>直接来自 OpenAlex / IEEE / OpenReview 的会议 RSS</description>
-
-</channel>
-</rss>
