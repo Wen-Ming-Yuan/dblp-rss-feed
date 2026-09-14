@@ -1,5 +1,6 @@
 import os
 import yaml
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from sources import (
@@ -20,7 +21,16 @@ MAX_WORKERS = int(os.environ.get("MAX_WORKERS", "4"))
 
 
 def main():
+    # 支持 python main.py --source acm_dl 单源调试
+    only_source = None
+    if "--source" in sys.argv:
+        idx = sys.argv.index("--source")
+        if idx + 1 < len(sys.argv):
+            only_source = sys.argv[idx + 1]
     confs = yaml.safe_load(open("config/conferences.yaml", encoding="utf-8"))
+    if only_source:
+        confs = [c for c in confs if c["source"] == only_source]
+        print(f"[Filter] 只跑 source={only_source}，共 {len(confs)} 个会议")
     state = load_state("data/state.json")
 
     sources = {
