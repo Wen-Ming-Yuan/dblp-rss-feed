@@ -1,0 +1,45 @@
+name: Fetch CCF-A Papers
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - name: Install Playwright browsers
+        run: playwright install chromium
+      - name: Run fetcher
+        env:
+          IEEE_API_KEY: ${{ secrets.IEEE_API_KEY }}
+          OPENALEX_MAILTO: 1941870298@qq.com
+          MAX_WORKERS: "4"
+        run: python main.py
+      - name: Commit state
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add data/state.json data/quota.json
+          if git diff --staged --quiet; then
+            echo "no changes"
+          else
+            git commit -m "chore: update state [skip ci]"
+            git pull --rebase --autostash || true
+            git push || git push --force-with-lease
+          fi
+      - name: Deploy RSS to gh-pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./output
+          publish_branch: gh-pages
