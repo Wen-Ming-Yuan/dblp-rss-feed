@@ -8,6 +8,13 @@ def _fmt_authors(authors):
     return xml_escape(", ".join(authors[:8]))
 
 
+def _fmt_abstract(text):
+    """转义 + 换行转 <br/>，保证 CDATA 内渲染正常。"""
+    if not text:
+        return ""
+    return xml_escape(text).replace("\n", "<br/>").replace("\r", "")
+
+
 def build_rss(papers, out_dir="output",
               site_url="https://wen-ming-yuan.github.io/dblp-rss-feed/"):
     out = Path(out_dir)
@@ -52,9 +59,8 @@ def build_rss(papers, out_dir="output",
                     f'<b>PDF:</b> <a href="{xml_escape(p.pdf_url)}">直达</a>'
                 )
             if p.abstract:
-                parts.append(f"<p>{xml_escape(p.abstract)}</p>")
+                parts.append(f"<p>{_fmt_abstract(p.abstract)}</p>")
 
-            # 关键修复：cdata=True，让阅读器渲染 HTML 而非显示转义文本
             fe.description("<br/>".join(parts), cdata=True)
 
             if p.pub_date:
@@ -65,7 +71,7 @@ def build_rss(papers, out_dir="output",
         fg.rss_file(str(out / f"{venue}.xml"), pretty=True)
         print(f"[RSS] {venue}.xml ({len(items)} entries)")
 
-    # 汇总
+    # 汇总 all.xml —— 修复换行
     fg = FeedGenerator()
     fg.id(site_url)
     fg.title("CCF-A 全部会议汇总")
@@ -78,5 +84,5 @@ def build_rss(papers, out_dir="output",
         fe.id(p.url or p.doi or p.title)
         fe.title(f"[{p.venue_short}] {p.title}")
         fe.link(href=p.url or (f"https://doi.org/{p.doi}" if p.doi else site_url))
-        fe.description(xml_escape(p.abstract or ""), cdata=True)
+        fe.description(_fmt_abstract(p.abstract or ""), cdata=True)
     fg.rss_file(str(out / "all.xml"), pretty=True)
