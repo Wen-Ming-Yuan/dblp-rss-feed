@@ -5,6 +5,7 @@ from datetime import datetime
 from bs4 import BeautifulSoup
 from sources.base import BaseSource
 from core.http import get_session
+from dateutil import parser as dateutil_parser   
 
 # 全局锁：保证同一时间只有一个 Playwright 实例
 _PW_LOCK = threading.Lock()
@@ -78,6 +79,22 @@ class AcmDlSource(BaseSource):
                 print(traceback.format_exc())
                 return None
                     
+    def _parse_acm_date(txt: str):
+          """不依赖 locale 的日期解析。优先 dateutil，兜底年-only。"""
+          if not txt:
+                return None
+          txt = txt.strip()
+    # dateutil 能处理 "15 August 2026" / "August 2026" / "2026" 等多种格式
+          try:
+                dt = dateutil_parser.parse(txt, fuzzy=False, default=datetime(1970, 1, 1))
+                return dt.date()
+          except Exception:
+                pass
+    # 兜底：从字符串里抠出 4 位年份
+          m = re.search(r"(19|20)\d{2}", txt)
+          if m:
+                return datetime(int(m.group(0)), 1, 1).date()
+          return None
 
     def _parse(self, soup, conf, year):
         papers = []
@@ -110,13 +127,8 @@ class AcmDlSource(BaseSource):
             date_el = item.select_one("span.issue-item__date, .issue-item__date")
             if date_el:
                 txt = date_el.get_text(strip=True)
-                for fmt in ("%d %B %Y", "%B %Y", "%Y"):
-                    try:
-                        pub_date = datetime.strptime(txt, fmt).date()
-                        break
-                    except Exception:
-                        continue
-
+                pub_date = _parse_acm_date(txt)
+               
             # 关键修复：用 conf_year 过滤，不是系统年份
             # 允许 conf_year 和 conf_year-1（前一年底上线的论文）
             if pub_date and pub_date.year not in (year, year - 1):
@@ -130,3 +142,4 @@ class AcmDlSource(BaseSource):
             p.pub_date = pub_date
             papers.append(p)
         return papers
+
