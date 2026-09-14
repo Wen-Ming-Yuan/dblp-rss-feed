@@ -8,6 +8,10 @@ _session = None
 _last_ts = 0.0
 _http_throttle_lock = threading.Lock()
 
+UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+      "AppleWebKit/537.36 (KHTML, like Gecko) "
+      "Chrome/151.0.0.0 Safari/537.36")
+
 def get_session() -> requests.Session:
     global _session
     if _session is not None:
@@ -22,11 +26,9 @@ def get_session() -> requests.Session:
     s.mount("https://", HTTPAdapter(max_retries=retry))
     s.mount("http://", HTTPAdapter(max_retries=retry))
     s.headers.update({
-        "User-Agent": (
-            "Mozilla/5.0 (compatible; CCFA-Research-Bot/1.0; "
-            "+https://github.com/Wen-Ming-Yuan/dblp-rss-feed)"
-        )
-    })
+        "User-Agent": UA,
+        "Accept-Language": "en-US,en;q=0.9",
+        })
     _session = s
     return s
 
