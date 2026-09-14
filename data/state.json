@@ -1,0 +1,76 @@
+{
+  "ieee": {
+    "HPCA": {
+      "start_record": 1,
+      "year": 2026
+    },
+    "MICRO": {
+      "start_record": 1,
+      "year": 2026
+    },
+    "SC": {
+      "start_record": 1,
+      "year": 2026
+    },
+    "ISCA": {
+      "start_record": 1,
+      "year": 2026
+    },
+    "HPDC": {
+      "start_record": 1,
+      "year": 2026
+    },
+    "INFOCOM": {
+      "start_record": 1,
+      "year": 2026
+    },
+    "S&P": {
+      "start_record": 1,
+      "year": 2026
+    },
+    "NDSS": {
+      "start_record": 1,
+      "year": 2026
+    },
+    "ASE": {
+      "start_record": 1,
+      "year": 2026
+    },
+    "ICSE": {
+      "start_record": 1,
+      "year": 2026
+    },
+    "ICDE": {
+      "start_record": 1,
+      "year": 2026
+    },
+    "FOCS": {
+      "start_record": 1,
+      "year": 2026
+    },
+    "LICS": {
+      "start_record": 1,
+      "year": 2026
+    },
+    "VR": {
+      "start_record": 1,
+      "year": 2026
+    },
+    "IEEE-VIS": {
+      "start_record": 1,
+      "year": 2026
+    },
+    "CVPR": {
+      "start_record": 1,
+      "year": 2026
+    },
+    "ICCV": {
+      "start_record": 1,
+      "year": 2026
+    },
+    "RTSS": {
+      "start_record": 1,
+      "year": 2026
+    }
+  }
+}
