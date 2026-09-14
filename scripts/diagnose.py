@@ -31,22 +31,32 @@ def load_conf(short):
 def test_acm():
     conf = load_conf("SIGCOMM")
     print(f"=== ACM 诊断：{conf['short']} DOI={conf.get('proceedings_doi')} ===")
-    src = AcmDlSource()
-    papers = src.fetch(conf, {})
-    print(f"结果：{len(papers)} 篇")
-    if papers:
-        print(f"  样例：{papers[0].title[:80]}")
+    try:
+        src = AcmDlSource()
+        papers = src.fetch(conf, {})
+        print(f"结果：{len(papers)} 篇")
+        if papers:
+            print(f"  样例：{papers[0].title[:80]}")
+            print(f"  日期样例：{papers[0].pub_date}")
+    except Exception as e:
+        import traceback
+        print(f"异常：{e}")
+        print(traceback.format_exc())
 
 
 def test_usenix():
     conf = load_conf("OSDI")
     print(f"=== USENIX 诊断：{conf['short']} path={conf.get('usenix_path')} ===")
-    src = UsenixSource()
-    papers = src.fetch(conf, {})
-    print(f"结果：{len(papers)} 篇")
-    if papers:
-        print(f"  样例：{papers[0].title[:80]}")
-
+    try:
+        src = UsenixSource()
+        papers = src.fetch(conf, {})
+        print(f"结果：{len(papers)} 篇")
+        if papers:
+            print(f"  样例：{papers[0].title[:80]}")
+    except Exception as e:
+        import traceback
+        print(f"异常：{e}")
+        print(traceback.format_exc())
 
 def test_ieee():
     conf = load_conf("HPCA")
